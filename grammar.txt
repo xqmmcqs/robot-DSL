@@ -1,0 +1,60 @@
+Variable
+    $billing Real 0
+    $name Text "User"
+    $trans Int 0
+
+State Welcome
+    Speak $name + "你好"
+    Case Contain "余额"
+        Goto Billing
+    Case Contain "改名"
+        Goto Rename
+    Case "投诉"
+        Goto Complain
+    Default Exit
+    Timeout 30
+        Speak "您已经很久没有操作了，即将于30秒后退出"
+    Timeout 60
+        Exit
+
+State Billing Verified
+    Speak $name + "，您的余额为" + $billing
+    Case Contain "充值"
+        Goto Recharge
+    Default
+        Goto Welcome
+    Timeout 30
+        Goto Welcome
+
+State Recharge Verified
+    Speak "请输入您的充值金额"
+    Speak "金额必须为整数"
+    Case Type Real
+        Speak "您的充值金额为" + Copy
+        Update $billing Add Copy
+        Goto Billing
+    Default
+        Speak "输入错误，请重新输入"
+        Goto Recharge
+    Timeout 30
+        Goto Welcome
+
+State Complain
+    Speak "请输入您的建议，不超过200个字符"
+    Case Length <= 200
+        Speak "感谢您的建议"
+        Exit
+    Default
+        Speak "输入过长，请重新输入"
+    Timeout 30
+        Goto Welcome
+
+State Rename
+    Speak "请输入您的新名字，不超过30个字符"
+    Case Length <= 30
+        Speak "您的新名字为" + Copy
+        Exit
+    Default
+        Speak "输入过长，请重新输入"
+    Timeout 30
+        Goto Welcome
