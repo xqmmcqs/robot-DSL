@@ -29,12 +29,12 @@ speak_action_copy = pp.Group(pp.Keyword("Speak") + pp.Group(
 actions = exit_action ^ goto_action ^ update_action ^ speak_action_copy
 
 case_clause = pp.Group(
-    pp.Keyword("Case") + conditions + pp.Group(pp.ZeroOrMore(update_action ^ speak_action_copy)) + pp.Opt(
-        exit_action ^ goto_action))
-default_clause = pp.Group(pp.Keyword("Default") + pp.Group(pp.ZeroOrMore(update_action ^ speak_action_copy)) + pp.Opt(
-    exit_action ^ goto_action))
-timeout_clause = pp.Group(pp.Keyword("Timeout") + integer_constant + pp.Group(pp.ZeroOrMore(speak_action)) + pp.Opt(
-    exit_action ^ goto_action))
+    pp.Keyword("Case") + conditions + pp.Group(pp.ZeroOrMore(update_action ^ speak_action_copy) + pp.Opt(
+        exit_action ^ goto_action)))
+default_clause = pp.Group(pp.Keyword("Default") + pp.Group(pp.ZeroOrMore(update_action ^ speak_action_copy) + pp.Opt(
+    exit_action ^ goto_action)))
+timeout_clause = pp.Group(pp.Keyword("Timeout") + integer_constant + pp.Group(pp.ZeroOrMore(speak_action) + pp.Opt(
+    exit_action ^ goto_action)))
 
 state_definition = pp.Group(
     pp.Keyword("State") + pp.Word(pp.alphas) + pp.Group(pp.Opt(pp.Keyword("Verified"))) + pp.Group(
