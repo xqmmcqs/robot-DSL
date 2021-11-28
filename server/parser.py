@@ -41,7 +41,19 @@ state_definition = pp.Group(
         pp.ZeroOrMore(speak_action)) + pp.Group(pp.ZeroOrMore(case_clause)) + default_clause + pp.Group(
         pp.ZeroOrMore(timeout_clause)))
 
-robot_language = pp.ZeroOrMore(state_definition ^ variable_definition)
+
+class RobotLanguage:
+    language = pp.ZeroOrMore(state_definition ^ variable_definition)
+
+    @staticmethod
+    def parse_files(files):
+        result = []
+        for file in files:
+            if len(file) == 0:
+                continue
+            result += RobotLanguage.language.parse_file(file, parse_all=True).as_list()
+        return result
+
 
 if __name__ == '__main__':
-    print(robot_language.parseFile("grammar.txt", parse_all=True))
+    print(RobotLanguage.parse_files(["grammar.txt"]))

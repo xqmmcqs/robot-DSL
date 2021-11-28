@@ -1,8 +1,9 @@
-from parser import robot_language
-from storm.locals import *
-from abc import ABCMeta, abstractmethod
 import os
+from server.parser import RobotLanguage
+from abc import ABCMeta, abstractmethod
 from threading import Lock
+
+from storm.locals import *
 
 
 class LoginException(Exception):
@@ -272,11 +273,7 @@ class StateMachine:
                 target_list.append(SpeakAction(language[1]))
 
     def __init__(self, files):
-        result = []
-        for file in files:
-            if len(file) == 0:
-                continue
-            result += robot_language.parse_file(file, parse_all=True).as_list()
+        result = RobotLanguage.parse_files(files)
         self.states = []
         verified = []
         create_table_statement = "CREATE TABLE uservariable (username TEXT PRIMARY KEY, passwd TEXT, "
