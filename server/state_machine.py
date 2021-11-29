@@ -10,8 +10,8 @@ class LoginException(Exception):
     pass
 
 
-class UserVariable:
-    __storm_table__ = 'uservariable'
+class UserVariableSet:
+    __storm_table__ = 'user_variable'
     username = Unicode(primary=True)
     passwd = Unicode()
 
@@ -28,21 +28,20 @@ database = create_database("sqlite:./robot.db")
 class UserState:
     def __init__(self):
         self.state = 0
-        self.login = False
+        self.have_login = False
         self.last_time = 0
         self.lock = Lock()
-        store = Store(database)
-        self.variable = store.find(UserVariable, UserVariable.username == "Guest").one()
-        store.close()
+        self.username = "Guest"
 
     def register(self, username, passwd) -> bool:
         store = Store(database)
-        if not store.find(UserVariable, UserVariable.username == username).is_empty():
+        if not store.find(UserVariableSet, UserVariableSet.username == username).is_empty():
             return False
         with self.lock:
-            self.variable = UserVariable(username, passwd)
-            self.login = True
-        store.add(self.variable)
+            self.username = username
+            variable_set = UserVariableSet(username, passwd)
+            self.have_login = True
+        store.add(variable_set)
         store.commit()
         store.close()
         return True
@@ -51,15 +50,16 @@ class UserState:
         if username == "Guest":
             return False
         store = Store(database)
-        variable = store.find(UserVariable, UserVariable.username == username)
-        store.close()
-        if variable.is_empty():
+        variable_set = store.find(UserVariableSet, UserVariableSet.username == username)
+        if variable_set.is_empty():
             return False
-        variable = variable.one()
-        if variable.passwd == passwd:
+        variable_set = variable_set.one()
+        if variable_set.passwd == passwd:
             with self.lock:
-                self.variable = variable
+                self.username = username
+            store.close()
             return True
+        store.close()
         return False
 
 
@@ -154,7 +154,7 @@ class GotoAction(Action):
         return f"Goto {self.next}"
 
     def exec(self, user_state: UserState, response: list, request: str) -> None:
-        if not user_state.login and self.verified:
+        if not user_state.have_login and self.verified:
             raise LoginException
         with user_state.lock:
             user_state.state = self.next
@@ -162,21 +162,21 @@ class GotoAction(Action):
 
 class UpdateAction(Action):
     def __init__(self, variable: str, op: str, value, value_check: str):
-        if getattr(UserVariable, variable, None) is None:
+        if getattr(UserVariableSet, variable, None) is None:
             raise Exception(f"{variable} 变量名不存在")
-        if isinstance(getattr(UserVariable, variable), Int):
+        if isinstance(getattr(UserVariableSet, variable), Int):
             if value == "Copy":
                 if value_check != "Int":
                     raise Exception("使用Update Copy时变量类型检查出错")
             elif not isinstance(value, int):
                 raise Exception("Update的值和变量类型不同")
-        elif isinstance(getattr(UserVariable, variable), Float):
+        elif isinstance(getattr(UserVariableSet, variable), Float):
             if value == "Copy":
                 if not (value_check == "Real" or value_check == "Int"):
                     raise Exception("使用Update Copy时变量类型检查出错")
             elif not (isinstance(value, float) or isinstance(value, int)):
                 raise Exception("Update的值和变量类型不同")
-        elif isinstance(getattr(UserVariable, variable), Unicode):
+        elif isinstance(getattr(UserVariableSet, variable), Unicode):
             if value == "Copy":
                 if value_check is not None:
                     raise Exception("使用Update Copy时变量类型检查出错")
@@ -193,37 +193,41 @@ class UpdateAction(Action):
         return f"Update {self.variable} {self.op} {self.value}"
 
     def exec(self, user_state: UserState, response: list, request: str) -> None:
+        store = Store(database)
+        variable_set = store.find(UserVariableSet, UserVariableSet.username == user_state.username).one()
         if self.op == "Add":
-            value = getattr(user_state, self.variable)
+            value = getattr(variable_set, self.variable)
             if self.value == "Copy":
                 if isinstance(getattr(UserState, self.variable), Int):
-                    setattr(user_state, self.variable, value + int(request))
+                    setattr(variable_set, self.variable, value + int(request))
                 elif isinstance(getattr(UserState, self.variable), Float):
-                    setattr(user_state, self.variable, value + float(request))
+                    setattr(variable_set, self.variable, value + float(request))
             else:
-                setattr(user_state, self.variable, value + self.value)
+                setattr(variable_set, self.variable, value + self.value)
         elif self.op == "Sub":
-            value = getattr(user_state, self.variable)
+            value = getattr(variable_set, self.variable)
             if self.value == "Copy":
                 if isinstance(getattr(UserState, self.variable), Int):
-                    setattr(user_state, self.variable, value - int(request))
+                    setattr(variable_set, self.variable, value - int(request))
                 elif isinstance(getattr(UserState, self.variable), Float):
-                    setattr(user_state, self.variable, value - float(request))
+                    setattr(variable_set, self.variable, value - float(request))
             else:
-                setattr(user_state, self.variable, value - self.value)
+                setattr(variable_set, self.variable, value - self.value)
         elif self.op == "Set":
             if self.value == "Copy":
                 if isinstance(getattr(UserState, self.variable), Int):
-                    setattr(user_state, self.variable, int(request))
+                    setattr(variable_set, self.variable, int(request))
                 elif isinstance(getattr(UserState, self.variable), Float):
-                    setattr(user_state, self.variable, float(request))
+                    setattr(variable_set, self.variable, float(request))
                 elif isinstance(getattr(UserState, self.variable), Unicode):
-                    setattr(user_state, self.variable, request)
+                    setattr(variable_set, self.variable, request)
             else:
                 if isinstance(getattr(UserState, self.variable), Unicode):
-                    setattr(user_state, self.variable, self.value[1:-1])
+                    setattr(variable_set, self.variable, self.value[1:-1])
                 else:
-                    setattr(user_state, self.variable, self.value)
+                    setattr(variable_set, self.variable, self.value)
+        store.commit()
+        store.close()
 
 
 class SpeakAction(Action):
@@ -237,9 +241,12 @@ class SpeakAction(Action):
         res = ""
         for content in self.contents:
             if content[0] == '$':
-                if getattr(UserVariable, content[1:], None) is None:
+                if getattr(UserVariableSet, content[1:], None) is None:
                     raise Exception(f"{content[1:]} 变量名不存在")
-                res += str(getattr(user_state.variable, content[1:]))
+                store = Store(database)
+                variable_set = store.find(UserVariableSet, UserVariableSet.username == user_state.username).one()
+                res += str(getattr(variable_set, content[1:]))
+                store.close()
             elif content[0] == '"' and content[-1] == '"':
                 res += content[1:-1]
             elif content == "Copy":
@@ -276,20 +283,20 @@ class StateMachine:
         result = RobotLanguage.parse_files(files)
         self.states = []
         verified = []
-        create_table_statement = "CREATE TABLE uservariable (username TEXT PRIMARY KEY, passwd TEXT, "
+        create_table_statement = "CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT, "
         for definition in result:
             if definition[0] == "Variable":
                 for clause in definition[1]:
-                    if getattr(UserVariable, clause[0], None) is not None:
+                    if getattr(UserVariableSet, clause[0], None) is not None:
                         raise Exception("变量命名冲突")
                     if clause[1] == "Int":
-                        setattr(UserVariable, clause[0][1:], Int(default=clause[2]))
+                        setattr(UserVariableSet, clause[0][1:], Int(default=clause[2]))
                         create_table_statement += f"{clause[0][1:]} INT, "
                     elif clause[1] == "Real":
-                        setattr(UserVariable, clause[0][1:], Float(default=clause[2]))
+                        setattr(UserVariableSet, clause[0][1:], Float(default=clause[2]))
                         create_table_statement += f"{clause[0][1:]} REAL, "
                     elif clause[1] == "Text":
-                        setattr(UserVariable, clause[0][1:], Unicode(default=clause[2][1:-1]))
+                        setattr(UserVariableSet, clause[0][1:], Unicode(default=clause[2][1:-1]))
                         create_table_statement += f"{clause[0][1:]} TEXT, "
             elif definition[0] == "State":
                 if definition[1] not in self.states:
@@ -315,7 +322,7 @@ class StateMachine:
         create_table_statement = create_table_statement[:-2] + ')'
         store = Store(database)
         store.execute(create_table_statement)
-        store.add(UserVariable("Guest", ''))
+        store.add(UserVariableSet("Guest", ''))
         store.commit()
         store.close()
 
@@ -373,21 +380,20 @@ class StateMachine:
 
     def condition_transform(self, user_state: UserState, msg: str) -> list:
         response = []
-        old_state = user_state.state
         for case in self.case[user_state.state]:
             if case.condition.check(msg):
                 for action in case.actions:
                     action.exec(user_state, response, msg)
-                if user_state.state != old_state:
+                if user_state.state != -1:
                     response += self.hello(user_state)
                 return response
         for action in self.default[user_state.state]:
             action.exec(user_state, response, msg)
-        if user_state.state != old_state:
+        if user_state.state != -1:
             response += self.hello(user_state)
         return response
 
-    def timeout_transform(self, user_state: UserState, now_seconds: int) -> list:
+    def timeout_transform(self, user_state: UserState, now_seconds: int) -> (list, bool, bool):
         response = []
         with user_state.lock:
             last_seconds = user_state.last_time
@@ -397,9 +403,9 @@ class StateMachine:
             if last_seconds < timeout_sec <= now_seconds:
                 for action in self.timeout[user_state.state][timeout_sec]:
                     action.exec(user_state, response, None)
-                if user_state.state != old_state:
+                if user_state.state != -1 and old_state != user_state.state:
                     response += self.hello(user_state)
-        return response
+        return response, user_state.state == -1, old_state != user_state.state
 
 
 if __name__ == '__main__':

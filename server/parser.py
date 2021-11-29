@@ -9,7 +9,7 @@ variable_clause = pp.Group(variable + ((pp.Keyword("Int") + integer_constant) ^ 
         pp.Keyword("Text") + string_constant)))
 variable_definition = pp.Group(pp.Keyword("Variable") + pp.Group(pp.OneOrMore(variable_clause)))
 
-length_condition = pp.Keyword("Length") + pp.oneOf("< > <= >= =") + pp.Word(pp.nums)
+length_condition = pp.Keyword("Length") + pp.oneOf("< > <= >= =") + integer_constant
 contain_condition = pp.Keyword("Contain") + string_constant
 type_condition = pp.Keyword("Type") + (pp.Keyword("Int") ^ pp.Keyword("Real"))
 equal_condition = string_constant
@@ -43,7 +43,7 @@ state_definition = pp.Group(
 
 
 class RobotLanguage:
-    language = pp.ZeroOrMore(state_definition ^ variable_definition)
+    _language = pp.ZeroOrMore(state_definition ^ variable_definition)
 
     @staticmethod
     def parse_files(files):
@@ -51,7 +51,7 @@ class RobotLanguage:
         for file in files:
             if len(file) == 0:
                 continue
-            result += RobotLanguage.language.parse_file(file, parse_all=True).as_list()
+            result += RobotLanguage._language.parse_file(file, parse_all=True).as_list()
         return result
 
 

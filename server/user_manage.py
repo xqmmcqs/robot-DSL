@@ -20,13 +20,10 @@ class UserManage:
         return jwt.encode({"username": username}, self.key, algorithm="HS256")
 
     def jwt_decode(self, token):
-        try:
-            username = jwt.decode(token, self.key, algorithms="HS256").get("username")
-            if username is None or username not in self.users.keys():
-                raise jwt.InvalidTokenError
-            return self.users[username]
-        except jwt.InvalidTokenError:
-            raise KeyError
+        username = jwt.decode(token, self.key, algorithms="HS256").get("username")
+        if username is None or username not in self.users.keys():
+            raise jwt.InvalidTokenError
+        return self.users[username]
 
     def connect(self):
         username = f"Guest_{time.time_ns()}"

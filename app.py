@@ -1,3 +1,4 @@
+import jwt
 from flask import Flask, jsonify, request
 from server.state_machine import StateMachine, LoginException
 from server.user_manage import UserManage
@@ -21,11 +22,13 @@ def send():
         token = request.args.get("token")
         user = user_manage.jwt_decode(token)
         response = state_machine.condition_transform(user.state, msg)
-        return jsonify(response), 200
+        return jsonify({"msg": response, "exit": user.state.state == -1}), 200
     except KeyError:
         return "ParameterError", 400
+    except jwt.InvalidTokenError:
+        return "Invalid Token", 403
     except LoginException:
-        return "NeedLogin", 401
+        return "Need login", 401
 
 
 @app.route('/echo')
@@ -34,12 +37,14 @@ def echo():
         seconds = int(request.args.get("seconds"))
         token = request.args.get("token")
         user = user_manage.jwt_decode(token)
-        response = state_machine.timeout_transform(user.state, seconds)
-        return jsonify(response), 200
+        response, exit_, reset_timer = state_machine.timeout_transform(user.state, seconds)
+        return jsonify({"msg": response, "exit": exit_, "reset": reset_timer}), 200
     except (KeyError, ValueError):
         return "ParameterError", 400
+    except jwt.InvalidTokenError:
+        return "Invalid Token", 403
     except LoginException:
-        return "NeedLogin", 401
+        return "Need login", 401
 
 
 @app.route('/login')
@@ -50,7 +55,9 @@ def login():
         token = request.args.get("token")
         user = user_manage.jwt_decode(token)
         new_token = user_manage.login(user, username, passwd)
-        return jsonify(new_token), 200
+        return jsonify({"token": new_token}), 200
+    except jwt.InvalidTokenError:
+        return "Invalid Token", 403
     except KeyError:
         return "ParameterError", 400
 
@@ -63,7 +70,9 @@ def register():
         token = request.args.get("token")
         user = user_manage.jwt_decode(token)
         new_token = user_manage.register(user, username, passwd)
-        return jsonify(new_token), 200
+        return jsonify({"token": new_token}), 200
+    except jwt.InvalidTokenError:
+        return "Invalid Token", 403
     except KeyError:
         return "ParameterError", 400
 
