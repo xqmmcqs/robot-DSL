@@ -1,11 +1,13 @@
 import os
+import storm.store
+from storm.locals import *
 from server.parser import RobotLanguage
 from abc import ABCMeta, abstractmethod
 from threading import Lock
+from typing import Any
 
-from storm.locals import *
 
-
+# TODO: 语法错误报告
 class LoginException(Exception):
     pass
 
@@ -15,7 +17,7 @@ class UserVariableSet:
     username = Unicode(primary=True)
     passwd = Unicode()
 
-    def __init__(self, username, passwd):
+    def __init__(self, username: str, passwd: str) -> None:
         self.username = username
         self.passwd = passwd
 
@@ -26,14 +28,14 @@ database = create_database("sqlite:./robot.db")
 
 
 class UserState:
-    def __init__(self):
+    def __init__(self) -> None:
         self.state = 0
         self.have_login = False
         self.last_time = 0
         self.lock = Lock()
         self.username = "Guest"
 
-    def register(self, username, passwd) -> bool:
+    def register(self, username: str, passwd: str) -> bool:
         store = Store(database)
         if not store.find(UserVariableSet, UserVariableSet.username == username).is_empty():
             return False
@@ -46,14 +48,14 @@ class UserState:
         store.close()
         return True
 
-    def login(self, username, passwd) -> bool:
+    def login(self, username: str, passwd: str) -> bool:
         if username == "Guest":
             return False
         store = Store(database)
-        variable_set = store.find(UserVariableSet, UserVariableSet.username == username)
+        variable_set: storm.store.ResultSet = store.find(UserVariableSet, UserVariableSet.username == username)
         if variable_set.is_empty():
             return False
-        variable_set = variable_set.one()
+        variable_set: UserVariableSet = variable_set.one()
         if variable_set.passwd == passwd:
             with self.lock:
                 self.username = username
@@ -70,11 +72,11 @@ class Condition(metaclass=ABCMeta):
 
 
 class LengthCondition(Condition):
-    def __init__(self, op, length):
+    def __init__(self, op: str, length: int) -> None:
         self.op = op
         self.length = length
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Length {self.op} {self.length}"
 
     def check(self, check_string: str) -> bool:
@@ -91,10 +93,10 @@ class LengthCondition(Condition):
 
 
 class ContainCondition(Condition):
-    def __init__(self, string):
+    def __init__(self, string: str) -> None:
         self.string = string
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Contain {self.string}"
 
     def check(self, check_string: str) -> bool:
@@ -102,10 +104,10 @@ class ContainCondition(Condition):
 
 
 class TypeCondition(Condition):
-    def __init__(self, type_):
+    def __init__(self, type_: str) -> None:
         self.type = type_
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Type {self.type}"
 
     def check(self, check_string: str) -> bool:
@@ -120,10 +122,10 @@ class TypeCondition(Condition):
 
 
 class EqualCondition(Condition):
-    def __init__(self, string):
+    def __init__(self, string: str) -> None:
         self.string = string
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Equal {self.string}"
 
     def check(self, check_string: str) -> bool:
@@ -132,7 +134,7 @@ class EqualCondition(Condition):
 
 class Action(metaclass=ABCMeta):
     @abstractmethod
-    def exec(self, user_state: UserState, response: list, request: str) -> None:
+    def exec(self, user_state: UserState, response: list[str], request: Any) -> None:
         pass
 
 
@@ -140,20 +142,20 @@ class ExitAction(Action):
     def __repr__(self):
         return "Exit"
 
-    def exec(self, user_state: UserState, response: list, request: str) -> None:
+    def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         with user_state.lock:
             user_state.state = -1
 
 
 class GotoAction(Action):
-    def __init__(self, next_state: int, verified: bool):
+    def __init__(self, next_state: int, verified: bool) -> None:
         self.next = next_state
         self.verified = verified
 
     def __repr__(self):
         return f"Goto {self.next}"
 
-    def exec(self, user_state: UserState, response: list, request: str) -> None:
+    def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         if not user_state.have_login and self.verified:
             raise LoginException
         with user_state.lock:
@@ -161,7 +163,7 @@ class GotoAction(Action):
 
 
 class UpdateAction(Action):
-    def __init__(self, variable: str, op: str, value, value_check: str):
+    def __init__(self, variable: str, op: str, value, value_check: str) -> None:
         if getattr(UserVariableSet, variable, None) is None:
             raise Exception(f"{variable} 变量名不存在")
         if isinstance(getattr(UserVariableSet, variable), Int):
@@ -189,12 +191,13 @@ class UpdateAction(Action):
         self.op = op
         self.value = value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Update {self.variable} {self.op} {self.value}"
 
-    def exec(self, user_state: UserState, response: list, request: str) -> None:
+    def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         store = Store(database)
-        variable_set = store.find(UserVariableSet, UserVariableSet.username == user_state.username).one()
+        variable_set: UserVariableSet = store.find(UserVariableSet,
+                                                   UserVariableSet.username == user_state.username).one()
         if self.op == "Add":
             value = getattr(variable_set, self.variable)
             if self.value == "Copy":
@@ -231,13 +234,13 @@ class UpdateAction(Action):
 
 
 class SpeakAction(Action):
-    def __init__(self, contents: list):
+    def __init__(self, contents: list[str]) -> None:
         self.contents = contents
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Speak " + " + ".join(self.contents)
 
-    def exec(self, user_state: UserState, response: list, request: str) -> None:
+    def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         res = ""
         for content in self.contents:
             if content[0] == '$':
@@ -255,16 +258,17 @@ class SpeakAction(Action):
 
 
 class CaseClause:
-    def __init__(self, condition):
+    def __init__(self, condition: Condition) -> None:
         self.condition = condition
-        self.actions = []
+        self.actions: list[Action] = []
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.condition) + ": " + "; ".join([repr(i) for i in self.actions])
 
 
 class StateMachine:
-    def _action_constructor(self, language_list: list, target_list: list, index: int, verified: list, value_check):
+    def _action_constructor(self, language_list: list, target_list: list[Action], index: int, verified: list[bool],
+                            value_check) -> None:
         for language in language_list:
             if language[0] == "Exit":
                 target_list.append(ExitAction())
@@ -279,10 +283,15 @@ class StateMachine:
             elif language[0] == "Speak":
                 target_list.append(SpeakAction(language[1]))
 
-    def __init__(self, files):
+    def __init__(self, files: list[str]) -> None:
         result = RobotLanguage.parse_files(files)
-        self.states = []
-        verified = []
+        self.states: list[str] = []
+        verified: list[bool] = []
+        self.speak: list[list[Action]] = []
+        self.case: list[list[CaseClause]] = []
+        self.default: list[list[Action]] = []
+        self.timeout: list[dict[int, list[Action]]] = []
+
         create_table_statement = "CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT, "
         for definition in result:
             if definition[0] == "Variable":
@@ -326,10 +335,6 @@ class StateMachine:
         store.commit()
         store.close()
 
-        self.speak = []
-        self.case = []
-        self.default = []
-        self.timeout = []
         state_index = -1
         for definition in result:
             if definition[0] != "State":
@@ -372,14 +377,14 @@ class StateMachine:
                     self._action_constructor(timeout_list[-1], self.timeout[-1][timeout_list[1]],
                                              state_index, verified, None)
 
-    def hello(self, user_state: UserState) -> list:
-        response = []
+    def hello(self, user_state: UserState) -> list[str]:
+        response: list[str] = []
         for action in self.speak[user_state.state]:
-            action.exec(user_state, response, "")
+            action.exec(user_state, response, None)
         return response
 
-    def condition_transform(self, user_state: UserState, msg: str) -> list:
-        response = []
+    def condition_transform(self, user_state: UserState, msg: str) -> list[str]:
+        response: list[str] = []
         for case in self.case[user_state.state]:
             if case.condition.check(msg):
                 for action in case.actions:
@@ -393,8 +398,8 @@ class StateMachine:
             response += self.hello(user_state)
         return response
 
-    def timeout_transform(self, user_state: UserState, now_seconds: int) -> (list, bool, bool):
-        response = []
+    def timeout_transform(self, user_state: UserState, now_seconds: int) -> (list[str], bool, bool):
+        response: list[str] = []
         with user_state.lock:
             last_seconds = user_state.last_time
             user_state.last_time = now_seconds
@@ -402,7 +407,7 @@ class StateMachine:
         for timeout_sec in self.timeout[user_state.state].keys():
             if last_seconds < timeout_sec <= now_seconds:
                 for action in self.timeout[user_state.state][timeout_sec]:
-                    action.exec(user_state, response, None)
+                    action.exec(user_state, response, "")
                 if user_state.state != -1 and old_state != user_state.state:
                     response += self.hello(user_state)
         return response, user_state.state == -1, old_state != user_state.state

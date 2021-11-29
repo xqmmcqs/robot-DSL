@@ -10,23 +10,23 @@ server_address = "http://127.0.0.1:5000"
 
 
 class Message(QObject):
-    def __init__(self, msg, author, parent=None):
+    def __init__(self, msg: str, author: int, parent=None) -> None:
         super().__init__(parent)
         self._msg = msg
         self._author = author
 
     @pyqtProperty('QString', constant=True)
-    def msg(self):
+    def msg(self) -> str:
         return self._msg
 
     @pyqtProperty(int, constant=True)
-    def author(self):
+    def author(self) -> int:
         return self._author
 
 
 # noinspection PyUnresolvedReferences
 class ClientModel(QObject):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._message_list = [Message('aa', 0), Message('bb', 1)]
         self._lock = Lock()
@@ -37,7 +37,7 @@ class ClientModel(QObject):
         self._time_count = None
         self.connect()
 
-    def __del__(self):
+    def __del__(self) -> None:
         if self._timer is not None:
             self._timer.cancel()
 
@@ -45,19 +45,19 @@ class ClientModel(QObject):
     have_login_changed = pyqtSignal()
 
     @pyqtProperty(QQmlListProperty, notify=message_list_changed)
-    def message_list(self):
+    def message_list(self) -> QQmlListProperty:
         return QQmlListProperty(Message, self, self._message_list)
 
     @pyqtProperty(bool, notify=have_login_changed)
-    def have_login(self):
+    def have_login(self) -> bool:
         return self._have_login
 
-    def append_message(self, msg: Message):
+    def append_message(self, msg: Message) -> None:
         self._message_list.append(msg)
         self.message_list_changed.emit()
 
     @pyqtSlot('QString')
-    def submit_message(self, msg: str):
+    def submit_message(self, msg: str) -> None:
         if self._token is None:
             self.connect()
             if self._token is None:
@@ -97,7 +97,7 @@ class ClientModel(QObject):
             self.append_message(Message("服务器消息异常，请稍后重试", 0))
 
     @pyqtSlot('QString', 'QString')
-    def user_login(self, username: str, passwd: str):
+    def user_login(self, username: str, passwd: str) -> None:
         if self._token is None:
             self.connect()
             if self._token is None:
@@ -123,7 +123,7 @@ class ClientModel(QObject):
             self.append_message(Message("服务器消息异常，请稍后重试", 0))
 
     @pyqtSlot('QString', 'QString')
-    def user_register(self, username: str, passwd: str):
+    def user_register(self, username: str, passwd: str) -> None:
         if self._token is None:
             self.connect()
             if self._token is None:
@@ -145,7 +145,7 @@ class ClientModel(QObject):
         except (KeyError, json.decoder.JSONDecodeError):
             self.append_message(Message("服务器消息异常，请稍后重试", 0))
 
-    def connect(self):
+    def connect(self) -> None:
         try:
             r = requests.get(server_address)
             if r.status_code != 200:
@@ -161,7 +161,7 @@ class ClientModel(QObject):
         self._timer = Timer(5, self.timeout_handler)
         self._timer.start()
 
-    def timeout_handler(self):
+    def timeout_handler(self) -> None:
         with self._lock:
             self._time_count += 5
         self._timer = Timer(5, self.timeout_handler)

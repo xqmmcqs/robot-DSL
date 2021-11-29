@@ -46,7 +46,7 @@ class RobotLanguage:
     _language = pp.ZeroOrMore(state_definition ^ variable_definition)
 
     @staticmethod
-    def parse_files(files):
+    def parse_files(files: list[str]) -> list[pp.ParseResults]:
         result = []
         for file in files:
             if len(file) == 0:

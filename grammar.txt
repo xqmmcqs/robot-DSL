@@ -37,7 +37,6 @@ State Recharge Verified
         Goto Billing
     Default
         Speak "输入错误，请重新输入"
-        Goto Recharge
     Timeout 30
         Goto Welcome
 
