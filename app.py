@@ -1,22 +1,49 @@
+"""客服系统后端API。
+
+Copyright (c) 2021 Ziheng Mao.
+"""
+
+import sys
 import jwt
-from flask import Flask, jsonify, request
-from server.state_machine import StateMachine, LoginException
+from flask import Flask, jsonify, request, abort
+from server.state_machine import StateMachine, LoginError, GrammarError
 from server.user_manage import UserManage
 
 app = Flask(__name__)
-user_manage = UserManage()
-with open("config.txt", "r") as f:
-    state_machine = StateMachine(list(map(lambda string: string.strip(), f.readlines())))
 
 
 @app.route('/')
 def connect():
+    """一个新的客户端连接到服务器时，请求一个token。
+
+    :return: 返回一个消息列表和token，格式为：``{"msg": ["xxx", "xxx"], "token": "xxx"}``。
+    :status 200: 成功建立会话。
+
+    一个客户端与服务器建立连接时，或者客户端开始一个新的会话时，从此路由获取一个token。
+    服务器默认分配一个访客账户，如果设置了默认的问候消息，还会返回消息列表。
+    """
+    global user_manage
     user, token = user_manage.connect()
     return jsonify({"msg": state_machine.hello(user.state), "token": token}), 200
 
 
 @app.route('/send')
 def send():
+    """客户端发送一条新消息，服务器返回响应。
+
+    :param: 客户端发送一条消息和token，格式为：``{"msg": "xxx", "token": "xxx"}``。
+    :return: 返回一个消息列表和是否结束会话的标志，格式为：``{"msg": ["xxx", "xxx"], "exit": false}``。
+    :status 200: 鉴权成功，服务器产生响应。
+    :status 400: 客户端请求消息格式有误。
+    :status 403: 鉴权失败。
+    :status 401: 用户是访客，需要登录。
+
+    一个客户端通过此路由向服务器发送一条消息。
+
+    收到消息后，客户端首先对token进行鉴权，之后对消息进行处理并产生响应，返回一个消息列表。
+    如果服务器需要终止一个会话，则设 ``exit`` 为1，该token立即过期，客户端需要重新开启一个会话。
+    """
+    global user_manage
     try:
         msg = request.args.get("msg")
         token = request.args.get("token")
@@ -24,15 +51,32 @@ def send():
         response = state_machine.condition_transform(user.state, msg)
         return jsonify({"msg": response, "exit": user.state.state == -1}), 200
     except KeyError:
-        return "ParameterError", 400
+        abort(400)
     except jwt.InvalidTokenError:
-        return "Invalid Token", 403
-    except LoginException:
-        return "Need login", 401
+        abort(403)
+    except LoginError:
+        abort(401)
 
 
 @app.route('/echo')
 def echo():
+    """客户端发送一条echo，服务器返回响应。
+
+    :param: 客户端发送闲置时间和token，格式为：``{"seconds": 5, "token": "xxx"}``。
+    :return: 返回一个消息列表、是否结束会话的标志和是否要求用户重置计时器的标志，格式为：
+        ``{"msg": ["xxx", "xxx"], "exit": false, reset: false}``。
+    :status 200: 鉴权成功，服务器产生响应。
+    :status 400: 客户端请求消息格式有误。
+    :status 403: 鉴权失败。
+    :status 401: 用户是访客，需要登录。
+
+    一个客户端通过此路由向服务器发送一条echo，表明自己仍然存活和用户闲置的时间。
+
+    收到echo后，客户端首先对token进行鉴权，之后依照闲置时间进行处理并产生响应，返回一个消息列表。
+    如果服务器需要终止一个会话，则设 ``exit`` 为1，该token立即过期，客户端需要重新开启一个会话。
+    如果服务器要求客户端重置闲置时间计时器，则设 ``reset`` 为1，客户端应当重启计时器。
+    """
+    global user_manage
     try:
         seconds = int(request.args.get("seconds"))
         token = request.args.get("token")
@@ -40,15 +84,29 @@ def echo():
         response, exit_, reset_timer = state_machine.timeout_transform(user.state, seconds)
         return jsonify({"msg": response, "exit": exit_, "reset": reset_timer}), 200
     except (KeyError, ValueError):
-        return "ParameterError", 400
+        abort(400)
     except jwt.InvalidTokenError:
-        return "Invalid Token", 403
-    except LoginException:
-        return "Need login", 401
+        abort(403)
+    except LoginError:
+        abort(401)
 
 
 @app.route('/login')
 def login():
+    """客户端请求登录，服务器返回新的token。
+
+    :param: 客户端发送用户名、密码和token，格式为：``{"username": "xxx", "passwd": xxx, "token": "xxx"}``。
+    :return: 返回一个新的token，格式为：``{"token": "xxx"}``。
+    :status 200: 鉴权并登录成功。
+    :status 400: 客户端请求消息格式有误。
+    :status 403: 鉴权失败。
+
+    一个客户端通过此路由向服务器发送一个登录请求。
+
+    收到请求后，客户端首先对token进行鉴权，之后验证用户名和密码，如果验证通过，则返回一个新的token。
+    原有的token立即过期，客户端需要使用新的token继续会话。
+    """
+    global user_manage
     try:
         username = request.args.get("username")
         passwd = request.args.get("passwd")
@@ -57,13 +115,27 @@ def login():
         new_token = user_manage.login(user, username, passwd)
         return jsonify({"token": new_token}), 200
     except jwt.InvalidTokenError:
-        return "Invalid Token", 403
+        abort(403)
     except KeyError:
-        return "ParameterError", 400
+        abort(400)
 
 
 @app.route('/register')
 def register():
+    """客户端请求注册，服务器返回新的token。
+
+    :param: 客户端发送用户名、密码和token，格式为：``{"username": "xxx", "passwd": xxx, "token": "xxx"}``。
+    :return: 返回一个新的token，格式为：``{"token": "xxx"}``。
+    :status 200: 鉴权并注册成功。
+    :status 400: 客户端请求消息格式有误。
+    :status 403: 鉴权失败。
+
+    一个客户端通过此路由向服务器发送一个注册请求。
+
+    收到请求后，客户端首先对token进行鉴权，之后验证用户名是否合法，如果验证通过，则返回一个新的token。
+    原有的token立即过期，客户端需要使用新的token继续会话。
+    """
+    global user_manage
     try:
         username = request.args.get("username")
         passwd = request.args.get("passwd")
@@ -72,10 +144,18 @@ def register():
         new_token = user_manage.register(user, username, passwd)
         return jsonify({"token": new_token}), 200
     except jwt.InvalidTokenError:
-        return "Invalid Token", 403
+        abort(403)
     except KeyError:
-        return "ParameterError", 400
+        abort(400)
 
 
 if __name__ == '__main__':
+    user_manage = UserManage()
+    try:
+        with open("config.txt", "r") as f:
+            state_machine = StateMachine(list(map(lambda string: string.strip(), f.readlines())))
+    except GrammarError as err:
+        print(" ".join(err.context))
+        print("GrammarError: ", err.msg)
+        sys.exit(1)
     app.run(threading=True)

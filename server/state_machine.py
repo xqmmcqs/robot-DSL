@@ -1,15 +1,26 @@
 import os
 from abc import ABCMeta, abstractmethod
 from threading import Lock
-from typing import Any
+from typing import Any, Union
 import storm.store
-from storm.locals import *
+from storm.locals import Unicode, Int, Float, create_database, Store
+from pyparsing import ParseException
 from server.parser import RobotLanguage
 
 
-# TODO: 语法错误报告
-class LoginException(Exception):
+class LoginError(Exception):
     pass
+
+
+class GrammarError(Exception):
+    def __init__(self, msg: str, context: list[str]) -> None:
+        """
+
+        :param msg:
+        :param context:
+        """
+        self.msg = msg
+        self.context = context
 
 
 class UserVariableSet:
@@ -22,11 +33,6 @@ class UserVariableSet:
         self.passwd = passwd
 
 
-if "robot.db" in os.listdir("./"):
-    os.remove("./robot.db")
-database = create_database("sqlite:./robot.db")
-
-
 class UserState:
     def __init__(self) -> None:
         self.state = 0
@@ -36,6 +42,7 @@ class UserState:
         self.username = "Guest"
 
     def register(self, username: str, passwd: str) -> bool:
+        global database
         store = Store(database)
         if not store.find(UserVariableSet, UserVariableSet.username == username).is_empty():
             return False
@@ -51,6 +58,7 @@ class UserState:
     def login(self, username: str, passwd: str) -> bool:
         if username == "Guest":
             return False
+        global database
         store = Store(database)
         variable_set: storm.store.ResultSet = store.find(UserVariableSet, UserVariableSet.username == username)
         if variable_set.is_empty():
@@ -157,35 +165,35 @@ class GotoAction(Action):
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         if not user_state.have_login and self.verified:
-            raise LoginException
+            raise LoginError
         with user_state.lock:
             user_state.state = self.next
 
 
 class UpdateAction(Action):
-    def __init__(self, variable: str, op: str, value, value_check: str) -> None:
+    def __init__(self, variable: str, op: str, value: Union[str, int, float], value_check: str) -> None:
         if getattr(UserVariableSet, variable, None) is None:
-            raise Exception(f"{variable} 变量名不存在")
+            raise GrammarError(f"{variable} 变量名不存在", ["Update", variable, op, value])
         if isinstance(getattr(UserVariableSet, variable), Int):
             if value == "Copy":
                 if value_check != "Int":
-                    raise Exception("使用Update Copy时变量类型检查出错")
+                    raise GrammarError("使用Update Copy时变量类型检查出错", ["Update", variable, op, value])
             elif not isinstance(value, int):
-                raise Exception("Update的值和变量类型不同")
+                raise GrammarError("Update的值和变量类型不同", ["Update", variable, op, value])
         elif isinstance(getattr(UserVariableSet, variable), Float):
             if value == "Copy":
                 if not (value_check == "Real" or value_check == "Int"):
-                    raise Exception("使用Update Copy时变量类型检查出错")
+                    raise GrammarError("使用Update Copy时变量类型检查出错", ["Update", variable, op, value])
             elif not (isinstance(value, float) or isinstance(value, int)):
-                raise Exception("Update的值和变量类型不同")
+                raise GrammarError("Update的值和变量类型不同", ["Update", variable, op, value])
         elif isinstance(getattr(UserVariableSet, variable), Unicode):
             if value == "Copy":
-                if value_check is not None:
-                    raise Exception("使用Update Copy时变量类型检查出错")
+                if value_check is None:
+                    raise GrammarError("使用Update Copy时变量类型检查出错", ["Update", variable, op, value])
             if not isinstance(value, str):
-                raise Exception("Update的值和变量类型不同")
+                raise GrammarError("Update的值和变量类型不同", ["Update", variable, op, value])
             if op != "Set":
-                raise Exception("Update字符串变量只允许使用Set操作")
+                raise GrammarError("Update字符串变量只允许使用Set操作", ["Update", variable, op, value])
 
         self.variable = variable
         self.op = op
@@ -195,6 +203,7 @@ class UpdateAction(Action):
         return f"Update {self.variable} {self.op} {self.value}"
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
+        global database
         store = Store(database)
         variable_set: UserVariableSet = store.find(UserVariableSet,
                                                    UserVariableSet.username == user_state.username).one()
@@ -236,16 +245,19 @@ class UpdateAction(Action):
 class SpeakAction(Action):
     def __init__(self, contents: list[str]) -> None:
         self.contents = contents
+        for content in self.contents:
+            if content[0] == '$':
+                if getattr(UserVariableSet, content[1:], None) is None:
+                    raise GrammarError(f"{content[1:]} 变量名不存在", ["Speak"] + contents)
 
     def __repr__(self) -> str:
         return "Speak " + " + ".join(self.contents)
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         res = ""
+        global database
         for content in self.contents:
             if content[0] == '$':
-                if getattr(UserVariableSet, content[1:], None) is None:
-                    raise Exception(f"{content[1:]} 变量名不存在")
                 store = Store(database)
                 variable_set = store.find(UserVariableSet, UserVariableSet.username == user_state.username).one()
                 res += str(getattr(variable_set, content[1:]))
@@ -274,17 +286,20 @@ class StateMachine:
                 target_list.append(ExitAction())
             elif language[0] == "Goto":
                 if language[1] not in self.states:
-                    raise Exception("Goto状态不存在")
+                    raise GrammarError("Goto状态不存在", language)
                 target_list.append(GotoAction(self.states.index(language[1]), verified[self.states.index(language[1])]))
             elif language[0] == "Update":
                 if not verified[index]:
-                    raise Exception("不能在非验证的状态执行Update语句")
+                    raise GrammarError("不能在非验证的状态执行Update语句", language)
                 target_list.append(UpdateAction(language[1][1:], language[2], language[3], value_check))
             elif language[0] == "Speak":
                 target_list.append(SpeakAction(language[1]))
 
     def __init__(self, files: list[str]) -> None:
-        result = RobotLanguage.parse_files(files)
+        try:
+            result = RobotLanguage.parse_files(files)
+        except ParseException as err:
+            raise GrammarError(err.__str__(), [err.line])
         self.states: list[str] = []
         verified: list[bool] = []
         self.speak: list[list[Action]] = []
@@ -292,21 +307,21 @@ class StateMachine:
         self.default: list[list[Action]] = []
         self.timeout: list[dict[int, list[Action]]] = []
 
-        create_table_statement = "CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT, "
+        create_table_statement = ["CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT"]
         for definition in result:
             if definition[0] == "Variable":
                 for clause in definition[1]:
                     if getattr(UserVariableSet, clause[0], None) is not None:
-                        raise Exception("变量命名冲突")
+                        raise GrammarError("变量命名冲突", clause)
                     if clause[1] == "Int":
                         setattr(UserVariableSet, clause[0][1:], Int(default=clause[2]))
-                        create_table_statement += f"{clause[0][1:]} INT, "
+                        create_table_statement.append(f"{clause[0][1:]} INT")
                     elif clause[1] == "Real":
                         setattr(UserVariableSet, clause[0][1:], Float(default=clause[2]))
-                        create_table_statement += f"{clause[0][1:]} REAL, "
+                        create_table_statement.append(f"{clause[0][1:]} REAL")
                     elif clause[1] == "Text":
                         setattr(UserVariableSet, clause[0][1:], Unicode(default=clause[2][1:-1]))
-                        create_table_statement += f"{clause[0][1:]} TEXT, "
+                        create_table_statement.append(f"{clause[0][1:]} TEXT")
             elif definition[0] == "State":
                 if definition[1] not in self.states:
                     self.states.append(definition[1])
@@ -315,22 +330,22 @@ class StateMachine:
                     else:
                         verified.append(True)
                 else:
-                    raise Exception("状态命名冲突")
+                    raise GrammarError("状态命名冲突", definition[:1])
 
         if "Welcome" not in self.states:
-            raise Exception("没有Welcome状态")
+            raise GrammarError("没有Welcome状态", [])
         else:
             welcome_index = self.states.index("Welcome")
             if verified[welcome_index]:
-                raise Exception("Welcome状态必须不为Verified")
+                raise GrammarError("Welcome状态必须不为Verified", [])
             verified[welcome_index] = verified[0]
             verified[0] = False
             self.states[welcome_index] = self.states[0]
             self.states[0] = "Welcome"
 
-        create_table_statement = create_table_statement[:-2] + ')'
+        global database
         store = Store(database)
-        store.execute(create_table_statement)
+        store.execute(','.join(create_table_statement) + ')')
         store.add(UserVariableSet("Guest", ''))
         store.commit()
         store.close()
@@ -350,7 +365,7 @@ class StateMachine:
             self.case.append([])
             if len(definition[4]) != 0:
                 for case_list in definition[4]:
-                    value_check = None
+                    value_check = "Text"
                     if case_list[1] == "Length":
                         self.case[-1].append(CaseClause(LengthCondition(case_list[2], case_list[3])))
                     elif case_list[1] == "Contain":
@@ -367,7 +382,7 @@ class StateMachine:
 
             # Default子句
             self.default.append([])
-            self._action_constructor(definition[5][1], self.default[-1], state_index, verified, None)
+            self._action_constructor(definition[5][1], self.default[-1], state_index, verified, "Text")
 
             # Timeout子句
             self.timeout.append(dict())
@@ -414,9 +429,16 @@ class StateMachine:
 
 
 if __name__ == '__main__':
-    m = StateMachine(["grammar.txt"])
-    print(m.states)
-    print(m.speak)
-    print(m.case)
-    print(m.default)
-    print(m.timeout)
+    if "robot.db" in os.listdir("./"):
+        os.remove("./robot.db")
+    database = create_database("sqlite:./robot.db")
+    try:
+        m = StateMachine(["./test/test_grammar_case2.txt"])
+        print(m.states)
+        print(m.speak)
+        print(m.case)
+        print(m.default)
+        print(m.timeout)
+    except GrammarError as err:
+        print(" ".join([str(item) for item in err.context]))
+        print("GrammarError: ", err.msg)

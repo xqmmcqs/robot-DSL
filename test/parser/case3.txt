@@ -1,0 +1,5 @@
+State Welcome
+    Default
+        Speak "something"
+        Exit
+        Speak "something"

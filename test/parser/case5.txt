@@ -1,0 +1,5 @@
+State Welcome
+    Case Type Int
+        Exit
+    Timeout 5
+        Speak Copy

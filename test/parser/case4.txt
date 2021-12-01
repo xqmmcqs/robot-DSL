@@ -1,0 +1,5 @@
+State Welcome
+    Default
+        Exit
+    Timeout 5
+        Speak Copy

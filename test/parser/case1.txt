@@ -1,0 +1,13 @@
+Variable
+    $name Text "用户"
+
+State Welcome
+    Speak $name + "你好"
+    Speak "请输入 退出 以退出"
+    Case "退出"
+        Exit
+    Default
+    Timeout 30
+        Speak "您已经很久没有操作了，即将于30秒后退出"
+    Timeout 60
+        Exit
