@@ -1,8 +1,8 @@
 import time
+from typing import Any
+from threading import Lock, Timer
 import jwt
 from server.state_machine import UserState
-from threading import Lock, Timer
-from typing import Any
 
 
 class User:

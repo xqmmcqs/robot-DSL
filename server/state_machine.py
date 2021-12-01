@@ -1,10 +1,10 @@
 import os
-import storm.store
-from storm.locals import *
-from server.parser import RobotLanguage
 from abc import ABCMeta, abstractmethod
 from threading import Lock
 from typing import Any
+import storm.store
+from storm.locals import *
+from server.parser import RobotLanguage
 
 
 # TODO: 语法错误报告

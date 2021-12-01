@@ -5,7 +5,7 @@ import QtQuick.Controls 2.15
 ApplicationWindow {
     id: root
     visible: true
-    width: 800
+    width: 400
     height: 600
     maximumHeight: height
     maximumWidth: width
@@ -29,66 +29,144 @@ ApplicationWindow {
         id: main_view
         anchors.fill: parent
 
-        ListView {
-            id: list_view
-            height: 500
-            width: parent.width
-            model: client_model.message_list
-            delegate: Text {
-                height: 30
-                text: modelData.msg
-            }
-            onCountChanged: {
-                list_view.positionViewAtEnd()
-            }
-            ScrollBar.vertical: ScrollBar {
-                active: true
+        Text {
+            anchors.verticalCenter: user_button.verticalCenter
+            anchors.horizontalCenter: parent.horizontalCenter
+            verticalAlignment: Text.AlignVCenter
+            horizontalAlignment: Text.AlignHCenter
+            text: "客服系统"
+            font.pixelSize: 17
+        }
+
+        Rectangle {
+            anchors.top: user_button.bottom
+            anchors.bottom: text_field_rec.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            radius: 10
+            border.color: "black"
+            border.width: 1
+
+            ListView {
+                id: list_view
+                anchors.fill: parent
+                anchors.topMargin: 10
+                anchors.bottomMargin: 10
+                model: client_model.message_list
+                clip: true
+                delegate: Item {
+                    width: 380
+                    height: Math.max(avatar.height, message_rec.height) + 10
+
+                    Image {
+                        id: avatar
+                        source: modelData.author ? "./static/client.png" : "./static/support.png"
+                        width: 30
+                        fillMode: Image.PreserveAspectFit
+                        anchors.right: modelData.author ? parent.right : undefined
+                        anchors.rightMargin: modelData.author ? 10 : undefined
+                        anchors.left: modelData.author ? undefined : parent.left
+                        anchors.leftMargin: modelData.author ? undefined : 10
+                    }
+
+                    Rectangle {
+                        id: message_rec
+                        color: "aliceblue"
+                        height: message.contentHeight + 10
+                        width: 250
+                        radius: 10
+                        border.color: "black"
+                        border.width: 1
+                        anchors.right: modelData.author ? avatar.left : undefined
+                        anchors.rightMargin: modelData.author ? 10 : undefined
+                        anchors.left: modelData.author ? undefined : avatar.right
+                        anchors.leftMargin: modelData.author ? undefined : 10
+
+                        Text {
+                            id: message
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 230
+                            text: modelData.msg
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                }
+                onCountChanged: {
+                    list_view.positionViewAtEnd()
+                }
+                ScrollBar.vertical: ScrollBar {
+                    active: true
+                }
             }
         }
 
-        TextField {
-            id: input
+        Rectangle {
+            id: text_field_rec
             anchors.bottom: parent.bottom
-            width: parent.width
-            placeholderText: "text"
-            height: 100
-            property string value: ""
-            verticalAlignment: TextInput.AlignTop
-            onTextChanged: value = text
-            onAccepted: {
-                client_model.submit_message(input.value)
-                input.text = ""
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            anchors.bottomMargin: 10
+            height: 40
+            radius: 10
+            border.color: "black"
+            border.width: 1
+
+            TextField {
+                id: input
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 5
+                anchors.right: send_button.left
+                anchors.rightMargin: 5
+                height: 30
+                placeholderText: "text"
+                property string value: ""
+                verticalAlignment: TextInput.AlignTop
+                onTextChanged: value = text
+                onAccepted: {
+                    client_model.submit_message(input.value)
+                    input.text = ""
+                }
+            }
+
+            Image {
+                id: send_button
+                source: "./static/send.png"
+                height: 30
+                fillMode: Image.PreserveAspectFit
+                anchors.right: parent.right
+                anchors.rightMargin: 5
+                anchors.verticalCenter: parent.verticalCenter
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        client_model.submit_message(input.value)
+                        input.text = ""
+                    }
+                }
             }
         }
 
         Image {
             id: user_button
             source: "./static/user.png"
-            width: 50
+            width: 40
             fillMode: Image.PreserveAspectFit
             anchors.right: parent.right
             anchors.top: parent.top
+            anchors.rightMargin: 10
+            anchors.topMargin: 10
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
                     username_field.text = ""
                     passwd_field.text = ""
                     stack_view.push(login_view)
-                }
-            }
-        }
-
-        Image {
-            source: "./static/send.png"
-            width: 60
-            fillMode: Image.PreserveAspectFit
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                    client_model.submit_message(input.value)
-                    input.text = ""
                 }
             }
         }
@@ -101,8 +179,12 @@ ApplicationWindow {
 
         Image {
             source: "./static/back.png"
-            width: 50
-            height: 50
+            width: 40
+            fillMode: Image.PreserveAspectFit
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.leftMargin: 10
+            anchors.topMargin: 10
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
@@ -112,13 +194,13 @@ ApplicationWindow {
         }
 
         Column {
-            width: 400
+            width: 250
             spacing: 20
             anchors.verticalCenter: parent.verticalCenter
             anchors.horizontalCenter: parent.horizontalCenter
 
             Text {
-                width: 400
+                width: 250
                 height: 30
                 verticalAlignment: Text.AlignVCenter
                 text: qsTr("登录页")
@@ -129,7 +211,7 @@ ApplicationWindow {
             TextField {
                 id: username_field
                 placeholderText: "用户名"
-                width: 400
+                width: 250
                 height: 30
                 property string value: ""
                 onTextChanged: value = text
@@ -139,16 +221,16 @@ ApplicationWindow {
                 id: passwd_field
                 placeholderText: "密码"
                 echoMode: TextInput.Password
-                width: 400
+                width: 250
                 height: 30
                 property string value: ""
                 onTextChanged: value = text
             }
 
             Row {
-                width: 300
+                width: 250
                 height: 60
-                spacing: 200
+                spacing: 130
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Image {

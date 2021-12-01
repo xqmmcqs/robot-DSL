@@ -1,10 +1,10 @@
-import json.decoder
 import sys
+from threading import Timer, Lock
+import json.decoder
 import requests
 from PyQt5.QtCore import QObject, pyqtProperty, pyqtSlot, pyqtSignal
 from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtQml import QQmlApplicationEngine, QQmlListProperty
-from threading import Timer, Lock
 
 server_address = "http://127.0.0.1:5000"
 
@@ -31,10 +31,10 @@ class ClientModel(QObject):
         self._message_list = [Message('aa', 0), Message('bb', 1)]
         self._lock = Lock()
 
-        self._token = None
+        self._token: Optional[str] = None
         self._have_login = False
-        self._timer = None
-        self._time_count = None
+        self._timer: Optional[Timer] = None
+        self._time_count: Optional[int] = None
         self.connect()
 
     def __del__(self) -> None:
@@ -153,13 +153,13 @@ class ClientModel(QObject):
             self._token = r.json().get("token")
             for msg in r.json().get("msg"):
                 self.append_message(Message(msg, 0))
+            self._time_count = 0
+            self._timer = Timer(5, self.timeout_handler)
+            self._timer.start()
         except requests.exceptions.ConnectionError:
             self.append_message(Message("服务器异常，请稍后重试", 0))
         except KeyError:
             self.append_message(Message("服务器消息异常，请稍后重试", 0))
-        self._time_count = 0
-        self._timer = Timer(5, self.timeout_handler)
-        self._timer.start()
 
     def timeout_handler(self) -> None:
         with self._lock:

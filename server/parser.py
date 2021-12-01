@@ -1,49 +1,51 @@
 import pyparsing as pp
 
-integer_constant = pp.Regex("[-+]?[0-9]+").set_parse_action(lambda tokens: int(tokens[0]))
-real_constant = pp.Regex("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?").set_parse_action(lambda tokens: float(tokens[0]))
-string_constant = pp.quoted_string('"')
-
-variable = pp.Combine('$' + pp.Regex("[A-Za-z_][0-9A-Za-z_]*"))
-variable_clause = pp.Group(variable + ((pp.Keyword("Int") + integer_constant) ^ (pp.Keyword("Real") + real_constant) ^ (
-        pp.Keyword("Text") + string_constant)))
-variable_definition = pp.Group(pp.Keyword("Variable") + pp.Group(pp.OneOrMore(variable_clause)))
-
-length_condition = pp.Keyword("Length") + pp.oneOf("< > <= >= =") + integer_constant
-contain_condition = pp.Keyword("Contain") + string_constant
-type_condition = pp.Keyword("Type") + (pp.Keyword("Int") ^ pp.Keyword("Real"))
-equal_condition = string_constant
-conditions = length_condition ^ contain_condition ^ type_condition ^ equal_condition
-
-exit_action = pp.Group(pp.Keyword("Exit"))
-goto_action = pp.Group(pp.Keyword("Goto") + pp.Word(pp.alphas))
-update_action = pp.Group(pp.Keyword("Update") + variable + (
-        ((pp.Keyword("Add") ^ pp.Keyword("Sub") ^ pp.Keyword("Set")) + (real_constant ^ pp.Keyword("Copy"))) ^ (
-        pp.Keyword("Set") + (string_constant("string") ^ pp.Keyword("Copy")))))
-speak_content = variable ^ string_constant
-speak_action = pp.Group(pp.Keyword("Speak") + pp.Group(
-    (speak_content + pp.ZeroOrMore('+' + speak_content)).set_parse_action(lambda tokens: tokens[0::2])))
-speak_action_copy = pp.Group(pp.Keyword("Speak") + pp.Group(
-    ((speak_content ^ pp.Keyword("Copy")) + pp.ZeroOrMore(
-        '+' + (speak_content ^ pp.Keyword("Copy")))).set_parse_action(lambda tokens: tokens[0::2])))
-actions = exit_action ^ goto_action ^ update_action ^ speak_action_copy
-
-case_clause = pp.Group(
-    pp.Keyword("Case") + conditions + pp.Group(pp.ZeroOrMore(update_action ^ speak_action_copy) + pp.Opt(
-        exit_action ^ goto_action)))
-default_clause = pp.Group(pp.Keyword("Default") + pp.Group(pp.ZeroOrMore(update_action ^ speak_action_copy) + pp.Opt(
-    exit_action ^ goto_action)))
-timeout_clause = pp.Group(pp.Keyword("Timeout") + integer_constant + pp.Group(pp.ZeroOrMore(speak_action) + pp.Opt(
-    exit_action ^ goto_action)))
-
-state_definition = pp.Group(
-    pp.Keyword("State") + pp.Word(pp.alphas) + pp.Group(pp.Opt(pp.Keyword("Verified"))) + pp.Group(
-        pp.ZeroOrMore(speak_action)) + pp.Group(pp.ZeroOrMore(case_clause)) + default_clause + pp.Group(
-        pp.ZeroOrMore(timeout_clause)))
-
 
 class RobotLanguage:
-    _language = pp.ZeroOrMore(state_definition ^ variable_definition)
+    _integer_constant = pp.Regex("[-+]?[0-9]+").set_parse_action(lambda tokens: int(tokens[0]))
+    _real_constant = pp.Regex("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?").set_parse_action(
+        lambda tokens: float(tokens[0]))
+    _string_constant = pp.quoted_string('"')
+
+    _variable = pp.Combine('$' + pp.Regex("[A-Za-z_][0-9A-Za-z_]*"))
+    _variable_clause = pp.Group(_variable + (
+                (pp.Keyword("Int") + _integer_constant) ^ (pp.Keyword("Real") + _real_constant) ^ (
+                    pp.Keyword("Text") + _string_constant)))
+    _variable_definition = pp.Group(pp.Keyword("Variable") + pp.Group(pp.OneOrMore(_variable_clause)))
+
+    _length_condition = pp.Keyword("Length") + pp.oneOf("< > <= >= =") + _integer_constant
+    _contain_condition = pp.Keyword("Contain") + _string_constant
+    _type_condition = pp.Keyword("Type") + (pp.Keyword("Int") ^ pp.Keyword("Real"))
+    _equal_condition = _string_constant
+    _conditions = _length_condition ^ _contain_condition ^ _type_condition ^ _equal_condition
+
+    _exit_action = pp.Group(pp.Keyword("Exit"))
+    _goto_action = pp.Group(pp.Keyword("Goto") + pp.Word(pp.alphas))
+    _update_action = pp.Group(pp.Keyword("Update") + _variable + (((pp.Keyword("Add") ^ pp.Keyword("Sub") ^ pp.Keyword(
+        "Set")) + (_real_constant ^ pp.Keyword("Copy"))) ^ (pp.Keyword("Set") + (
+            _string_constant("string") ^ pp.Keyword("Copy")))))
+    _speak_content = _variable ^ _string_constant
+    _speak_action = pp.Group(pp.Keyword("Speak") + pp.Group(
+        (_speak_content + pp.ZeroOrMore('+' + _speak_content)).set_parse_action(lambda tokens: tokens[0::2])))
+    _speak_action_copy = pp.Group(pp.Keyword("Speak") + pp.Group(((_speak_content ^ pp.Keyword("Copy")) + pp.ZeroOrMore(
+        '+' + (_speak_content ^ pp.Keyword("Copy")))).set_parse_action(lambda tokens: tokens[0::2])))
+    _actions = _exit_action ^ _goto_action ^ _update_action ^ _speak_action_copy
+
+    _case_clause = pp.Group(
+        pp.Keyword("Case") + _conditions + pp.Group(pp.ZeroOrMore(_update_action ^ _speak_action_copy) + pp.Opt(
+            _exit_action ^ _goto_action)))
+    _default_clause = pp.Group(
+        pp.Keyword("Default") + pp.Group(pp.ZeroOrMore(_update_action ^ _speak_action_copy) + pp.Opt(
+            _exit_action ^ _goto_action)))
+    _timeout_clause = pp.Group(
+        pp.Keyword("Timeout") + _integer_constant + pp.Group(pp.ZeroOrMore(_speak_action) + pp.Opt(
+            _exit_action ^ _goto_action)))
+
+    _state_definition = pp.Group(
+        pp.Keyword("State") + pp.Word(pp.alphas) + pp.Group(pp.Opt(pp.Keyword("Verified"))) + pp.Group(
+            pp.ZeroOrMore(_speak_action)) + pp.Group(pp.ZeroOrMore(_case_clause)) + _default_clause + pp.Group(
+            pp.ZeroOrMore(_timeout_clause)))
+    _language = pp.ZeroOrMore(_state_definition ^ _variable_definition)
 
     @staticmethod
     def parse_files(files: list[str]) -> list[pp.ParseResults]:
