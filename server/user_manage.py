@@ -1,5 +1,5 @@
 import time
-from typing import Any
+from typing import Optional
 from threading import Lock, Timer
 import jwt
 from server.state_machine import UserState
@@ -13,7 +13,7 @@ class User(object):
 
 
 class UserManage(object):
-    def __init__(self, key="this_is_a_secret") -> None:
+    def __init__(self, key: str) -> None:
         self.users: dict[str, User] = dict()
         self.lock = Lock()
         self.key = key
@@ -34,7 +34,7 @@ class UserManage(object):
             self.users[username].timer = Timer(300, self.timeout_handler, username)
         return self.users[username], self.jwt_encode(username)
 
-    def login(self, user: User, username: str, passwd: str) -> Any:
+    def login(self, user: User, username: str, passwd: str) -> Optional[str]:
         old_username = user.username
         if not self.users[old_username].state.login(username, passwd):
             return None
@@ -44,7 +44,7 @@ class UserManage(object):
             del self.users[old_username]
         return self.jwt_encode(username)
 
-    def register(self, user: User, username: str, passwd: str) -> Any:
+    def register(self, user: User, username: str, passwd: str) -> Optional[str]:
         old_username = user.username
         if not self.users[old_username].state.register(username, passwd):
             return None

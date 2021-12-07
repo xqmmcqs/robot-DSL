@@ -45,6 +45,7 @@ class UserState(object):
         global database
         store = Store(database)
         if store.get(UserVariableSet, username) is not None:
+            store.close()
             return False
         with self.lock:
             self.username = username
@@ -62,6 +63,7 @@ class UserState(object):
         store = Store(database)
         variable_set = store.get(UserVariableSet, username)
         if variable_set is None:
+            store.close()
             return False
         if variable_set.passwd == passwd:
             with self.lock:

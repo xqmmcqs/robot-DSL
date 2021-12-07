@@ -138,6 +138,9 @@ class ClientModel(QObject):
                 return
             elif r.status_code != 200:
                 raise requests.exceptions.ConnectionError()
+            if r.json().get("token") is None:
+                self.append_message(Message("注册失败，用户名冲突", 0))
+                return
             self._token = r.json().get("token")
             self.append_message(Message("注册并登录成功", 0))
         except requests.exceptions.ConnectionError:
