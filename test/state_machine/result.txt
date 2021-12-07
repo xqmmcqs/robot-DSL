@@ -1,0 +1,5 @@
+['Welcome', 'Hello', 'Goodbye']
+[[], [Speak "test1" + $name + $billing + $transactions], []]
+[[], [Length < 20: , Length > 10: , Length = 5: , Length >= 0: , Length <= 200: Goto 0], [Contain goodbye: Update billing Set 0.0, Equal nooooo: Speak $name + "timeout" + Copy; Update billing Sub -1.0; Update name Set Copy, Type Int: Update transactions Add Copy; Update billing Add Copy, Type Real: Update billing Sub Copy]]
+[[Goto 1], [Exit], []]
+[{}, {0: [], 500: [Update transactions Add 1.0]}, {0: [Goto 0], 20: [Goto 1]}]

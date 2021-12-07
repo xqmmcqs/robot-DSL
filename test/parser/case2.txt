@@ -4,6 +4,7 @@ Variable
 
 State Welcome
     Default
+        Goto Hello
 
 State Hello Verified
     Speak "test1" + $name + $billing + $transactions

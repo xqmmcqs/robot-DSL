@@ -5,14 +5,14 @@ import jwt
 from server.state_machine import UserState
 
 
-class User:
+class User(object):
     def __init__(self, username: str) -> None:
         self.timer = None
         self.state = UserState()
         self.username = username
 
 
-class UserManage:
+class UserManage(object):
     def __init__(self, key="this_is_a_secret") -> None:
         self.users: dict[str, User] = dict()
         self.lock = Lock()

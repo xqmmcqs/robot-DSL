@@ -1,10 +1,11 @@
 Variable
     $billing Real 0
-    $name Text "User"
+    $name Text "用户"
     $trans Int 0
 
 State Welcome
-    Speak $name + "你好"
+    Speak "你好，" + $name
+    Speak "请输入 余额 以查看余额，输入 改名 以修改名字，输入 投诉 来投诉，输入 退出 以结束会话"
     Case Contain "余额"
         Goto Billing
     Case Contain "改名"
@@ -14,48 +15,61 @@ State Welcome
     Case "退出"
         Exit
     Default
-    Timeout 30
-        Speak "您已经很久没有操作了，即将于30秒后退出"
     Timeout 60
+        Speak "您已经很久没有操作了，即将于30秒后退出"
+    Timeout 90
         Exit
 
 State Billing Verified
     Speak $name + "，您的余额为" + $billing
+    Speak "请输入 充值 以进入充值菜单，输入 返回 以返回主菜单"
     Case Contain "充值"
         Goto Recharge
-    Default
+    Case "返回"
         Goto Welcome
-    Timeout 30
+    Default
+    Timeout 60
+        Speak "您已经很久没有操作了，即将返回主菜单"
         Goto Welcome
 
 State Recharge Verified
-    Speak "请输入您的充值金额"
-    Speak "金额必须为整数"
+    Speak "请输入您的充值金额，金额必须为小数或者整数"
     Case Type Real
-        Speak "您的充值金额为" + Copy
+        Speak "您的充值金额为，" + Copy
         Update $billing Add Copy
+        Update $trans Add 1
         Goto Billing
+    Case "返回"
+        Goto Welcome
     Default
-        Speak "输入错误，请重新输入"
-    Timeout 30
+        Speak "输入错误"
+    Timeout 60
+        Speak "您已经很久没有操作了，即将返回主菜单"
         Goto Welcome
 
 State Complain
     Speak "请输入您的建议，不超过200个字符"
+    Case "返回"
+        Goto Welcome
     Case Length <= 200
         Speak "感谢您的建议"
         Exit
     Default
-        Speak "输入过长，请重新输入"
-    Timeout 30
+        Speak "输入过长"
+    Timeout 60
+        Speak "您已经很久没有操作了，即将返回主菜单"
         Goto Welcome
 
-State Rename
+State Rename Verified
     Speak "请输入您的新名字，不超过30个字符"
+    Case "返回"
+        Goto Welcome
     Case Length <= 30
         Speak "您的新名字为" + Copy
-        Exit
+        Update $name Set Copy
+        Goto Welcome
     Default
-        Speak "输入过长，请重新输入"
-    Timeout 30
+        Speak "输入过长"
+    Timeout 60
+        Speak "您已经很久没有操作了，即将返回主菜单"
         Goto Welcome

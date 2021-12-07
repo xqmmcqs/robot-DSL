@@ -3,13 +3,28 @@
 Copyright (c) 2021 Ziheng Mao.
 """
 
+import os
 import sys
 import jwt
+import json
 from flask import Flask, jsonify, request, abort
-from server.state_machine import StateMachine, LoginError, GrammarError
+from server.state_machine import StateMachine, LoginError, GrammarError, init_database
 from server.user_manage import UserManage
 
 app = Flask(__name__)
+try:
+    current_path = os.path.split(os.path.realpath(__file__))[0]
+    config: dict = json.load(open(os.path.join(current_path, "config.json")))
+    user_manage = UserManage(config["key"])
+    init_database(os.path.join(current_path, config["db_path"]))
+    state_machine = StateMachine([os.path.join(current_path, path) for path in config["source"]])
+except GrammarError as err:
+    print(" ".join(err.context))
+    print("GrammarError: ", err.msg)
+    sys.exit(1)
+except (FileNotFoundError, json.JSONDecodeError, KeyError):
+    print("Error with config.json or file not found")
+    sys.exit(1)
 
 
 @app.route('/')
@@ -22,7 +37,6 @@ def connect():
     一个客户端与服务器建立连接时，或者客户端开始一个新的会话时，从此路由获取一个token。
     服务器默认分配一个访客账户，如果设置了默认的问候消息，还会返回消息列表。
     """
-    global user_manage
     user, token = user_manage.connect()
     return jsonify({"msg": state_machine.hello(user.state), "token": token}), 200
 
@@ -43,10 +57,9 @@ def send():
     收到消息后，客户端首先对token进行鉴权，之后对消息进行处理并产生响应，返回一个消息列表。
     如果服务器需要终止一个会话，则设 ``exit`` 为1，该token立即过期，客户端需要重新开启一个会话。
     """
-    global user_manage
     try:
-        msg = request.args.get("msg")
-        token = request.args.get("token")
+        msg = request.args["msg"]
+        token = request.args["token"]
         user = user_manage.jwt_decode(token)
         response = state_machine.condition_transform(user.state, msg)
         return jsonify({"msg": response, "exit": user.state.state == -1}), 200
@@ -76,10 +89,9 @@ def echo():
     如果服务器需要终止一个会话，则设 ``exit`` 为1，该token立即过期，客户端需要重新开启一个会话。
     如果服务器要求客户端重置闲置时间计时器，则设 ``reset`` 为1，客户端应当重启计时器。
     """
-    global user_manage
     try:
-        seconds = int(request.args.get("seconds"))
-        token = request.args.get("token")
+        seconds = int(request.args["seconds"])
+        token = request.args["token"]
         user = user_manage.jwt_decode(token)
         response, exit_, reset_timer = state_machine.timeout_transform(user.state, seconds)
         return jsonify({"msg": response, "exit": exit_, "reset": reset_timer}), 200
@@ -106,11 +118,10 @@ def login():
     收到请求后，客户端首先对token进行鉴权，之后验证用户名和密码，如果验证通过，则返回一个新的token。
     原有的token立即过期，客户端需要使用新的token继续会话。
     """
-    global user_manage
     try:
-        username = request.args.get("username")
-        passwd = request.args.get("passwd")
-        token = request.args.get("token")
+        username = request.args["username"]
+        passwd = request.args["passwd"]
+        token = request.args["token"]
         user = user_manage.jwt_decode(token)
         new_token = user_manage.login(user, username, passwd)
         return jsonify({"token": new_token}), 200
@@ -135,11 +146,10 @@ def register():
     收到请求后，客户端首先对token进行鉴权，之后验证用户名是否合法，如果验证通过，则返回一个新的token。
     原有的token立即过期，客户端需要使用新的token继续会话。
     """
-    global user_manage
     try:
-        username = request.args.get("username")
-        passwd = request.args.get("passwd")
-        token = request.args.get("token")
+        username = request.args["username"]
+        passwd = request.args["passwd"]
+        token = request.args["token"]
         user = user_manage.jwt_decode(token)
         new_token = user_manage.register(user, username, passwd)
         return jsonify({"token": new_token}), 200
@@ -150,12 +160,4 @@ def register():
 
 
 if __name__ == '__main__':
-    user_manage = UserManage()
-    try:
-        with open("config.txt", "r") as f:
-            state_machine = StateMachine(list(map(lambda string: string.strip(), f.readlines())))
-    except GrammarError as err:
-        print(" ".join(err.context))
-        print("GrammarError: ", err.msg)
-        sys.exit(1)
     app.run(threading=True)

@@ -17,6 +17,11 @@ This is the introduction of demo。
 
    app
 
+.. automodule:: server.parser
+
+.. autoclass:: server.parser.RobotLanguage
+   :members:
+
 Indices and tables
 ==================
 

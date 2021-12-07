@@ -1,0 +1,7 @@
+{
+  "key": "secret",
+  "db_path": "robot.db",
+  "source": [
+    "grammar.txt"
+  ]
+}
