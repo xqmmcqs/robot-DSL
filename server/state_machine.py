@@ -1,5 +1,12 @@
 """状态机模块。
 
+此模块读取脚本语言语法分析的结果，并且构建状态机模型。
+
+状态机是拓广的Mealy状态机，给定一个输入，可以进行状态转移并且产生输出。可行的输入包括一条用户消息，或者用户超时的时长，输出通常为一个字符串序列。
+
+此模块同时维护一个数据库，存储用户相关的变量。
+
+Copyright (c) 2021 Ziheng Mao.
 """
 
 import os
@@ -13,16 +20,27 @@ from server.parser import RobotLanguage
 
 
 class LoginError(Exception):
+    """表示用户未登录的错误。"""
     pass
 
 
 class GrammarError(Exception):
+    """表示脚本语言的语法错误。"""
+
     def __init__(self, msg: str, context: list[str]) -> None:
         self.msg = msg
         self.context = context
 
 
 class UserVariableSet(object):
+    """用户变量集，与数据库关联。
+
+    采用storm作为ORM，除了 `column_type` 之外各个类属性关联到数据库表中的一列，实例中的相关属性关联到元组的对应属性。
+
+    用户的基础属性包括用户名和密码，其他属性则通过 `setattr` 动态添加。
+
+    :var column_type: 表中各类的类型。
+    """
     __storm_table__ = 'user_variable'
     column_type = {"username": "Text", "passwd": "Text"}
     username = Unicode(primary=True)
@@ -34,6 +52,15 @@ class UserVariableSet(object):
 
 
 class UserState(object):
+    """用户状态对象。
+
+    :ivar state: 用户在状态机中所处的状态。
+    :ivar have_login: 用户是否已经登录。
+    :ivar last_time: 距离用户上次发送消息过去的秒数。
+    :ivar lock: 互斥锁。
+    :ivar username: 用户名。
+    """
+
     def __init__(self) -> None:
         self.state = 0
         self.have_login = False
@@ -42,46 +69,69 @@ class UserState(object):
         self.username = "Guest"
 
     def register(self, username: str, passwd: str) -> bool:
-        global database
-        store = Store(database)
-        if store.get(UserVariableSet, username) is not None:
-            store.close()
-            return False
-        with self.lock:
-            self.username = username
-            variable_set = UserVariableSet(username, passwd)
-            self.have_login = True
-        store.add(variable_set)
-        store.commit()
-        store.close()
-        return True
+        """注册新用户。
 
-    def login(self, username: str, passwd: str) -> bool:
-        if username == "Guest":
-            return False
-        global database
-        store = Store(database)
-        variable_set = store.get(UserVariableSet, username)
-        if variable_set is None:
-            store.close()
-            return False
-        if variable_set.passwd == passwd:
+        首先在数据库中查找用户是否存在，如果不存在，则向数据库中添加一个新用户，并且更新用户名和登录信息。
+
+        :param username: 用户名。
+        :param passwd: 密码。
+        :return: 如果注册成功，返回True；否则返回False。
+        """
+        global database, db_lock
+        with db_lock:
+            store = Store(database)
+            if store.get(UserVariableSet, username) is not None:
+                store.close()
+                return False
             with self.lock:
                 self.username = username
+                variable_set = UserVariableSet(username, passwd)
                 self.have_login = True
+            store.add(variable_set)
+            store.commit()
             store.close()
             return True
-        store.close()
-        return False
+
+    def login(self, username: str, passwd: str) -> bool:
+        """用户登录。
+
+        在数据库中查找用户信息，并且验证密码是否正确。
+
+        :param username: 用户名。
+        :param passwd: 密码。
+        :return: 如果登录成功，返回True；否则返回False。
+        """
+        if username == "Guest":
+            return False
+        global database, db_lock
+        with db_lock:
+            store = Store(database)
+            variable_set = store.get(UserVariableSet, username)
+            if variable_set is None:
+                store.close()
+                return False
+            if variable_set.passwd == passwd:
+                with self.lock:
+                    self.username = username
+                    self.have_login = True
+                store.close()
+                return True
+            store.close()
+            return False
 
 
 class Condition(metaclass=ABCMeta):
+    """条件判断抽象基类。"""
+
     @abstractmethod
     def check(self, check_string: str) -> bool:
+        """判断是否满足条件。"""
         pass
 
 
 class LengthCondition(Condition):
+    """长度判断条件。"""
+
     def __init__(self, op: str, length: int) -> None:
         self.op = op
         self.length = length
@@ -103,6 +153,8 @@ class LengthCondition(Condition):
 
 
 class ContainCondition(Condition):
+    """字符串包含判断条件。"""
+
     def __init__(self, string: str) -> None:
         self.string = string
 
@@ -114,6 +166,8 @@ class ContainCondition(Condition):
 
 
 class TypeCondition(Condition):
+    """字符串字面值类型判断。"""
+
     def __init__(self, type_: str) -> None:
         self.type = type_
 
@@ -132,6 +186,8 @@ class TypeCondition(Condition):
 
 
 class EqualCondition(Condition):
+    """字符串相等判断。"""
+
     def __init__(self, string: str) -> None:
         self.string = string
 
@@ -205,42 +261,43 @@ class UpdateAction(Action):
         return f"Update {self.variable} {self.op} {self.value}"
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
-        global database
-        store = Store(database)
-        variable_set: UserVariableSet = store.get(UserVariableSet, user_state.username)
-        if self.op == "Add":
-            value = getattr(variable_set, self.variable)
-            if self.value == "Copy":
-                if UserVariableSet.column_type[self.variable] == "Int":
-                    setattr(variable_set, self.variable, value + int(request))
-                elif UserVariableSet.column_type[self.variable] == "Real":
-                    setattr(variable_set, self.variable, value + float(request))
-            else:
-                setattr(variable_set, self.variable, value + self.value)
-        elif self.op == "Sub":
-            value = getattr(variable_set, self.variable)
-            if self.value == "Copy":
-                if UserVariableSet.column_type[self.variable] == "Int":
-                    setattr(variable_set, self.variable, value - int(request))
-                elif UserVariableSet.column_type[self.variable] == "Real":
-                    setattr(variable_set, self.variable, value - float(request))
-            else:
-                setattr(variable_set, self.variable, value - self.value)
-        elif self.op == "Set":
-            if self.value == "Copy":
-                if UserVariableSet.column_type[self.variable] == "Int":
-                    setattr(variable_set, self.variable, int(request))
-                elif UserVariableSet.column_type[self.variable] == "Real":
-                    setattr(variable_set, self.variable, float(request))
-                elif UserVariableSet.column_type[self.variable] == "Text":
-                    setattr(variable_set, self.variable, request)
-            else:
-                if UserVariableSet.column_type[self.variable] == "Text":
-                    setattr(variable_set, self.variable, self.value[1:-1])
+        global database, db_lock
+        with db_lock:
+            store = Store(database)
+            variable_set: UserVariableSet = store.get(UserVariableSet, user_state.username)
+            if self.op == "Add":
+                value = getattr(variable_set, self.variable)
+                if self.value == "Copy":
+                    if UserVariableSet.column_type[self.variable] == "Int":
+                        setattr(variable_set, self.variable, value + int(request))
+                    elif UserVariableSet.column_type[self.variable] == "Real":
+                        setattr(variable_set, self.variable, value + float(request))
                 else:
-                    setattr(variable_set, self.variable, self.value)
-        store.commit()
-        store.close()
+                    setattr(variable_set, self.variable, value + self.value)
+            elif self.op == "Sub":
+                value = getattr(variable_set, self.variable)
+                if self.value == "Copy":
+                    if UserVariableSet.column_type[self.variable] == "Int":
+                        setattr(variable_set, self.variable, value - int(request))
+                    elif UserVariableSet.column_type[self.variable] == "Real":
+                        setattr(variable_set, self.variable, value - float(request))
+                else:
+                    setattr(variable_set, self.variable, value - self.value)
+            elif self.op == "Set":
+                if self.value == "Copy":
+                    if UserVariableSet.column_type[self.variable] == "Int":
+                        setattr(variable_set, self.variable, int(request))
+                    elif UserVariableSet.column_type[self.variable] == "Real":
+                        setattr(variable_set, self.variable, float(request))
+                    elif UserVariableSet.column_type[self.variable] == "Text":
+                        setattr(variable_set, self.variable, request)
+                else:
+                    if UserVariableSet.column_type[self.variable] == "Text":
+                        setattr(variable_set, self.variable, self.value[1:-1])
+                    else:
+                        setattr(variable_set, self.variable, self.value)
+            store.commit()
+            store.close()
 
 
 class SpeakAction(Action):
@@ -256,17 +313,18 @@ class SpeakAction(Action):
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
         res = ""
-        global database
-        for content in self.contents:
-            if content[0] == '$':
-                store = Store(database)
-                variable_set = store.get(UserVariableSet, user_state.username)
-                res += str(getattr(variable_set, content[1:]))
-                store.close()
-            elif content[0] == '"' and content[-1] == '"':
-                res += content[1:-1]
-            elif content == "Copy":
-                res += request
+        global database, db_lock
+        with db_lock:
+            for content in self.contents:
+                if content[0] == '$':
+                    store = Store(database)
+                    variable_set = store.get(UserVariableSet, user_state.username)
+                    res += str(getattr(variable_set, content[1:]))
+                    store.close()
+                elif content[0] == '"' and content[-1] == '"':
+                    res += content[1:-1]
+                elif content == "Copy":
+                    res += request
         response.append(res)
 
 
@@ -323,7 +381,7 @@ class StateMachine(object):
 
         create_table_statement = ["CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT"]
         for definition in result:
-            if definition[0] == "Variable":
+            if definition[0] == "Variable":  # 处理变量定义
                 for clause in definition[1]:
                     if UserVariableSet.column_type.get(clause[0]) is not None:
                         raise GrammarError("变量命名冲突", clause)
@@ -339,9 +397,9 @@ class StateMachine(object):
                         setattr(UserVariableSet, clause[0][1:], Unicode(default=clause[2][1:-1]))
                         UserVariableSet.column_type[clause[0][1:]] = "Text"
                         create_table_statement.append(f"{clause[0][1:]} TEXT")
-            elif definition[0] == "State":
+            elif definition[0] == "State":  # 处理状态定义
                 if definition[1] not in self.states:
-                    self.states.append(definition[1])
+                    self.states.append(definition[1])  # 将状态名加入状态集
                     if len(definition[2]) == 0:
                         verified.append(False)
                     else:
@@ -360,12 +418,14 @@ class StateMachine(object):
             self.states[welcome_index] = self.states[0]
             self.states[0] = "Welcome"
 
-        global database
-        store = Store(database)
-        store.execute(','.join(create_table_statement) + ')')
-        store.add(UserVariableSet("Guest", ''))
-        store.commit()
-        store.close()
+        global database, db_lock
+        db_lock = Lock()
+        with db_lock:
+            store = Store(database)
+            store.execute(','.join(create_table_statement) + ')')
+            store.add(UserVariableSet("Guest", ''))
+            store.commit()
+            store.close()
 
         state_index = -1
         for definition in result:
@@ -421,12 +481,12 @@ class StateMachine(object):
             if case.condition.check(msg):
                 for action in case.actions:
                     action.exec(user_state, response, msg)
-                if user_state.state != -1:
+                if user_state.state != -1:  # 新状态的speak动作
                     response += self.hello(user_state)
                 return response
         for action in self.default[user_state.state]:
             action.exec(user_state, response, msg)
-        if user_state.state != -1:
+        if user_state.state != -1:  # 新状态的speak动作
             response += self.hello(user_state)
         return response
 
@@ -440,7 +500,7 @@ class StateMachine(object):
             if last_seconds < timeout_sec <= now_seconds:
                 for action in self.timeout[user_state.state][timeout_sec]:
                     action.exec(user_state, response, "")
-                if user_state.state != -1 and old_state != user_state.state:
+                if user_state.state != -1 and old_state != user_state.state:  # 如果旧状态和新状态不同，执行新状态的speak动作
                     response += self.hello(user_state)
         return response, user_state.state == -1, old_state != user_state.state
 

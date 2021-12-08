@@ -38,6 +38,8 @@ class UserManage(object):
         old_username = user.username
         if not self.users[old_username].state.login(username, passwd):
             return None
+        if self.users[username] is not None:
+            return None
         with self.lock:
             self.users[username] = self.users[old_username]
             self.users[username].username = username

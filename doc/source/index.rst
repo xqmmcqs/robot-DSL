@@ -16,11 +16,9 @@ This is the introduction of demo。
    :caption: 目录:
 
    app
+   state_machine
+   parser
 
-.. automodule:: server.parser
-
-.. autoclass:: server.parser.RobotLanguage
-   :members:
 
 Indices and tables
 ==================
