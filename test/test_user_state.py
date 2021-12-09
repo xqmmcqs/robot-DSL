@@ -47,10 +47,12 @@ class TestLengthCondition(unittest.TestCase):
 
 class TestContainCondition(unittest.TestCase):
     def test_check(self):
-        condition = ContainCondition("a string")
-        self.assertTrue(condition.check(""))
-        self.assertTrue(condition.check(" "))
-        self.assertFalse(condition.check("b"))
+        condition = ContainCondition("")
+        self.assertTrue(condition.check("a string"))
+        condition = ContainCondition(" ")
+        self.assertTrue(condition.check("a string"))
+        condition = ContainCondition("b")
+        self.assertFalse(condition.check("a string"))
 
 
 class TestTypeCondition(unittest.TestCase):

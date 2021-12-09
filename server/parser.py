@@ -1,6 +1,8 @@
 """词法、语法分析模块。
 
 此模块从文件中读取脚本文件，利用预先定义的领域特定脚本语言文法进行词法分析和语法分析，并且返回一个语法树。
+
+Copyright (c) 2021 Ziheng Mao.
 """
 
 import pyparsing as pp
@@ -72,6 +74,6 @@ class RobotLanguage(object):
 
 if __name__ == '__main__':
     try:
-        print(RobotLanguage.parse_files(["../test/parser/case2.txt"]))
+        print(RobotLanguage.parse_files(["../test/parser/case1.txt"]))
     except pp.ParseException as err:
         print(err.explain())

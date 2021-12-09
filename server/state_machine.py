@@ -12,7 +12,7 @@ Copyright (c) 2021 Ziheng Mao.
 import os
 from abc import ABCMeta, abstractmethod
 from threading import Lock
-from typing import Any, Union
+from typing import Any, Union, Optional
 from storm.locals import create_database, Store
 from storm.properties import Unicode, Int, Float
 from pyparsing import ParseException
@@ -25,7 +25,11 @@ class LoginError(Exception):
 
 
 class GrammarError(Exception):
-    """表示脚本语言的语法错误。"""
+    """表示脚本语言的语法错误。
+
+    :ivar msg: 错误消息。
+    :ivar context: 错误上下文。
+    """
 
     def __init__(self, msg: str, context: list[str]) -> None:
         self.msg = msg
@@ -35,11 +39,11 @@ class GrammarError(Exception):
 class UserVariableSet(object):
     """用户变量集，与数据库关联。
 
-    采用storm作为ORM，除了 `column_type` 之外各个类属性关联到数据库表中的一列，实例中的相关属性关联到元组的对应属性。
+    采用storm作为ORM，除了 ``column_type`` 之外各个类属性关联到数据库表中的一列，实例中的相关属性关联到元组的对应属性。
 
-    用户的基础属性包括用户名和密码，其他属性则通过 `setattr` 动态添加。
+    用户的基础属性包括用户名和密码，其他属性则通过 ``setattr`` 动态添加。
 
-    :var column_type: 表中各类的类型。
+    :var column_type: 表中各列的类型。
     """
     __storm_table__ = 'user_variable'
     column_type = {"username": "Text", "passwd": "Text"}
@@ -80,14 +84,14 @@ class UserState(object):
         global database, db_lock
         with db_lock:
             store = Store(database)
-            if store.get(UserVariableSet, username) is not None:
+            if store.get(UserVariableSet, username) is not None:  # 用户已经存在
                 store.close()
                 return False
             with self.lock:
                 self.username = username
                 variable_set = UserVariableSet(username, passwd)
                 self.have_login = True
-            store.add(variable_set)
+            store.add(variable_set)  # 添加新的行
             store.commit()
             store.close()
             return True
@@ -101,13 +105,13 @@ class UserState(object):
         :param passwd: 密码。
         :return: 如果登录成功，返回True；否则返回False。
         """
-        if username == "Guest":
+        if username == "Guest":  # 不能登录访客用户
             return False
         global database, db_lock
         with db_lock:
             store = Store(database)
             variable_set = store.get(UserVariableSet, username)
-            if variable_set is None:
+            if variable_set is None:  # 用户不存在
                 store.close()
                 return False
             if variable_set.passwd == passwd:
@@ -125,12 +129,20 @@ class Condition(metaclass=ABCMeta):
 
     @abstractmethod
     def check(self, check_string: str) -> bool:
-        """判断是否满足条件。"""
+        """判断是否满足条件。
+
+        :param check_string: 需要判断的字符串。
+        :return: 如果满足条件，返回True；否则返回False。
+        """
         pass
 
 
 class LengthCondition(Condition):
-    """长度判断条件。"""
+    """长度判断条件，判断用户输入是否满足长度限制。
+
+    :ivar op: 判断运算符，可以为 ``<``、``>``、``<=``、``>=``、``=`` 其中之一。
+    :ivar length: 长度。
+    """
 
     def __init__(self, op: str, length: int) -> None:
         self.op = op
@@ -140,6 +152,9 @@ class LengthCondition(Condition):
         return f"Length {self.op} {self.length}"
 
     def check(self, check_string: str) -> bool:
+        """
+        参考：:py:meth:`Condition.check`
+        """
         if self.op == "<":
             return len(check_string) < self.length
         elif self.op == ">":
@@ -153,7 +168,10 @@ class LengthCondition(Condition):
 
 
 class ContainCondition(Condition):
-    """字符串包含判断条件。"""
+    """字符串包含判断条件，判断用户输入是否包含给定串。
+
+    :ivar string: 包含的字符串。
+    """
 
     def __init__(self, string: str) -> None:
         self.string = string
@@ -162,11 +180,17 @@ class ContainCondition(Condition):
         return f"Contain {self.string}"
 
     def check(self, check_string: str) -> bool:
-        return check_string in self.string
+        """
+        参考：:py:meth:`Condition.check`
+        """
+        return self.string in check_string
 
 
 class TypeCondition(Condition):
-    """字符串字面值类型判断。"""
+    """字符串字面值类型判断，判断用户输入是否是某种类型。
+
+    :ivar type: 类型，可以为 ``Int``、``Real`` 之一。
+    """
 
     def __init__(self, type_: str) -> None:
         self.type = type_
@@ -175,6 +199,9 @@ class TypeCondition(Condition):
         return f"Type {self.type}"
 
     def check(self, check_string: str) -> bool:
+        """
+        参考：:py:meth:`Condition.check`
+        """
         if self.type == "Int":
             return check_string.isdigit()
         elif self.type == "Real":
@@ -186,7 +213,10 @@ class TypeCondition(Condition):
 
 
 class EqualCondition(Condition):
-    """字符串相等判断。"""
+    """字符串相等判断，判断用户输入是否和某一个串相等。
+
+    :ivar string: 字符串。
+    """
 
     def __init__(self, string: str) -> None:
         self.string = string
@@ -195,25 +225,47 @@ class EqualCondition(Condition):
         return f"Equal {self.string}"
 
     def check(self, check_string: str) -> bool:
+        """
+        参考：:py:meth:`Condition.check`
+        """
         return check_string.strip() == self.string.strip()
 
 
 class Action(metaclass=ABCMeta):
+    """动作抽象基类。"""
+
     @abstractmethod
     def exec(self, user_state: UserState, response: list[str], request: Any) -> None:
+        """执行一个动作。
+
+        :param user_state: 用户状态。
+        :param response: 产生回复字符串列表。
+        :param request: 用户请求字符串。
+        """
         pass
 
 
 class ExitAction(Action):
+    """退出动作，结束一个会话。"""
+
     def __repr__(self):
         return "Exit"
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
+        """
+        参考：:py:meth:`Action.exec`
+        """
         with user_state.lock:
             user_state.state = -1
 
 
 class GotoAction(Action):
+    """状态转移动作，转移到一个新状态。
+
+    :ivar next: 转移到的状态。
+    :ivar verified: 新状态是否需要登录验证。
+    """
+
     def __init__(self, next_state: int, verified: bool) -> None:
         self.next = next_state
         self.verified = verified
@@ -222,6 +274,9 @@ class GotoAction(Action):
         return f"Goto {self.next}"
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
+        """
+        参考：:py:meth:`Action.exec`
+        """
         if not user_state.have_login and self.verified:
             raise LoginError
         with user_state.lock:
@@ -229,28 +284,36 @@ class GotoAction(Action):
 
 
 class UpdateAction(Action):
-    def __init__(self, variable: str, op: str, value: Union[str, int, float], value_check: Union[str, None]) -> None:
+    """更新用户变量动作。
+
+    :ivar variable: 变量名。
+    :ivar op: 更新操作类型，可以是 ``Add``、``Sub``、``Set`` 之一。
+    :ivar value: 更新的值，可以是以双引号开头和结尾的字符串、"Copy"或者一个数字。
+    :ivar value_check: 该动作是否处于什么样的类型检查环境，可以是 ``Int``、``Real``、``Text`` 或者None。
+    """
+
+    def __init__(self, variable: str, op: str, value: Union[str, int, float], value_check: Optional[str]) -> None:
         if UserVariableSet.column_type.get(variable) is None:
             raise GrammarError(f"{variable} 变量名不存在", ["Update", variable, op, value])
-        if UserVariableSet.column_type[variable] == "Int":
+        if UserVariableSet.column_type[variable] == "Int":  # 变量类型是整数
             if value == "Copy":
-                if value_check != "Int":
+                if value_check != "Int":  # 必须进行整数类型检查
                     raise GrammarError("使用Update Copy时变量类型检查出错", ["Update", variable, op, value])
-            elif not (isinstance(value, float) or isinstance(value, int)) or int(value) != value:
+            elif not (isinstance(value, float) or isinstance(value, int)) or int(value) != value:  # 字面值必须是整数
                 raise GrammarError("Update的值和变量类型不同", ["Update", variable, op, int(value)])
-        elif UserVariableSet.column_type[variable] == "Real":
+        elif UserVariableSet.column_type[variable] == "Real":  # 变量类型是实数
             if value == "Copy":
-                if not (value_check == "Real" or value_check == "Int"):
+                if not (value_check == "Real" or value_check == "Int"):  # 必须进行整数或者浮点数类型检查
                     raise GrammarError("使用Update Copy时变量类型检查出错", ["Update", variable, op, value])
-            elif not isinstance(value, float):
+            elif not isinstance(value, float):  # 字面值必须是浮点数
                 raise GrammarError("Update的值和变量类型不同", ["Update", variable, op, value])
         elif UserVariableSet.column_type[variable] == "Text":
             if value == "Copy":
-                if value_check is None:
+                if value_check is None:  # 必须进行类型检查
                     raise GrammarError("使用Update Copy时变量类型检查出错", ["Update", variable, op, value])
-            if not isinstance(value, str):
+            if not isinstance(value, str):  # 字面值必须是字符串
                 raise GrammarError("Update的值和变量类型不同", ["Update", variable, op, value])
-            if op != "Set":
+            if op != "Set":  # 字符串只能进行Set操作
                 raise GrammarError("Update字符串变量只允许使用Set操作", ["Update", variable, op, value])
 
         self.variable = variable
@@ -261,13 +324,16 @@ class UpdateAction(Action):
         return f"Update {self.variable} {self.op} {self.value}"
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
+        """
+        参考：:py:meth:`Action.exec`
+        """
         global database, db_lock
         with db_lock:
             store = Store(database)
-            variable_set: UserVariableSet = store.get(UserVariableSet, user_state.username)
+            variable_set: UserVariableSet = store.get(UserVariableSet, user_state.username)  # 得到用户的变量集
             if self.op == "Add":
                 value = getattr(variable_set, self.variable)
-                if self.value == "Copy":
+                if self.value == "Copy":  # 根据用户输入处理值
                     if UserVariableSet.column_type[self.variable] == "Int":
                         setattr(variable_set, self.variable, value + int(request))
                     elif UserVariableSet.column_type[self.variable] == "Real":
@@ -276,7 +342,7 @@ class UpdateAction(Action):
                     setattr(variable_set, self.variable, value + self.value)
             elif self.op == "Sub":
                 value = getattr(variable_set, self.variable)
-                if self.value == "Copy":
+                if self.value == "Copy":  # 根据用户输入处理值
                     if UserVariableSet.column_type[self.variable] == "Int":
                         setattr(variable_set, self.variable, value - int(request))
                     elif UserVariableSet.column_type[self.variable] == "Real":
@@ -284,7 +350,7 @@ class UpdateAction(Action):
                 else:
                     setattr(variable_set, self.variable, value - self.value)
             elif self.op == "Set":
-                if self.value == "Copy":
+                if self.value == "Copy":  # 根据用户输入处理值
                     if UserVariableSet.column_type[self.variable] == "Int":
                         setattr(variable_set, self.variable, int(request))
                     elif UserVariableSet.column_type[self.variable] == "Real":
@@ -301,6 +367,11 @@ class UpdateAction(Action):
 
 
 class SpeakAction(Action):
+    """产生回复动作。
+
+    :ivar contents: 回复内容列表。
+    """
+
     def __init__(self, contents: list[str]) -> None:
         self.contents = contents
         for content in self.contents:
@@ -312,23 +383,32 @@ class SpeakAction(Action):
         return "Speak " + " + ".join(self.contents)
 
     def exec(self, user_state: UserState, response: list[str], request: str) -> None:
+        """
+        参考：:py:meth:`Action.exec`
+        """
         res = ""
         global database, db_lock
         with db_lock:
             for content in self.contents:
-                if content[0] == '$':
+                if content[0] == '$':  # 输出变量的值
                     store = Store(database)
                     variable_set = store.get(UserVariableSet, user_state.username)
                     res += str(getattr(variable_set, content[1:]))
                     store.close()
-                elif content[0] == '"' and content[-1] == '"':
+                elif content[0] == '"' and content[-1] == '"':  # 输出字符串
                     res += content[1:-1]
-                elif content == "Copy":
+                elif content == "Copy":  # 输出用户的输入
                     res += request
         response.append(res)
 
 
 class CaseClause(object):
+    """条件分支。
+
+    :ivar condition: 条件。
+    :ivar action: 满足条件后执行的动作列表。
+    """
+
     def __init__(self, condition: Condition) -> None:
         self.condition = condition
         self.actions: list[Action] = []
@@ -337,22 +417,45 @@ class CaseClause(object):
         return repr(self.condition) + ": " + "; ".join([repr(i) for i in self.actions])
 
 
-def init_database(path):
-    global database
+def init_database(path) -> None:
+    """初始化数据库。
+
+    :param path: 数据库路径。
+    """
+    global database, db_lock
     dir, file_name = os.path.split(path)
     if file_name in os.listdir(dir):
         os.remove(path)
     database = create_database("sqlite:" + path)
+    db_lock = Lock()
 
 
 def get_database():
+    """返回数据库。"""
     global database
     return database
 
 
 class StateMachine(object):
+    """状态机。
+
+    :ivar states: 状态集合。
+    :ivar speak: 状态默认的speak语句集合。
+    :ivar case: 状态的条件分支集合。
+    :ivar default: 状态的默认分支。
+    :ivar timeout: 状态的超时转移分支。
+    """
+
     def _action_constructor(self, language_list: list, target_list: list[Action], index: int, verified: list[bool],
-                            value_check) -> None:
+                            value_check: Optional[str]) -> None:
+        """构建一个动作列表。
+
+        :param language_list: 语法树的子树，包含一系列动作。
+        :param target_list: 构建的动作列表存储到此。
+        :param index: 状态编号。
+        :param verified: 状态是否需要登录验证。
+        :param value_check: 参考:py:class:`UpdateAction`。
+        """
         for language in language_list:
             if language[0] == "Exit":
                 target_list.append(ExitAction())
@@ -379,7 +482,8 @@ class StateMachine(object):
         self.default: list[list[Action]] = []
         self.timeout: list[dict[int, list[Action]]] = []
 
-        create_table_statement = ["CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT"]
+        create_table_statement = ["CREATE TABLE user_variable (username TEXT PRIMARY KEY, passwd TEXT"]  # 建表语句
+        # 处理变量定义和状态集
         for definition in result:
             if definition[0] == "Variable":  # 处理变量定义
                 for clause in definition[1]:
@@ -418,16 +522,17 @@ class StateMachine(object):
             self.states[welcome_index] = self.states[0]
             self.states[0] = "Welcome"
 
+        # 建立数据库
         global database, db_lock
-        db_lock = Lock()
         with db_lock:
             store = Store(database)
             store.execute(','.join(create_table_statement) + ')')
-            store.add(UserVariableSet("Guest", ''))
+            store.add(UserVariableSet("Guest", ''))  # 创建默认的访客用户
             store.commit()
             store.close()
 
         state_index = -1
+        # 处理各个分支和动作
         for definition in result:
             if definition[0] != "State":
                 continue
@@ -470,12 +575,23 @@ class StateMachine(object):
                                              state_index, verified, None)
 
     def hello(self, user_state: UserState) -> list[str]:
+        """输出某个状态的默认 ``speak`` 动作。
+
+        :param user_state: 用户状态。
+        :return: 输出的字符串列表。
+        """
         response: list[str] = []
         for action in self.speak[user_state.state]:
             action.exec(user_state, response, None)
         return response
 
     def condition_transform(self, user_state: UserState, msg: str) -> list[str]:
+        """条件转移。
+
+        :param user_state: 用户状态
+        :param msg: 用户输入。
+        :return: 输出的字符串列表。
+        """
         response: list[str] = []
         for case in self.case[user_state.state]:
             if case.condition.check(msg):
@@ -491,17 +607,25 @@ class StateMachine(object):
         return response
 
     def timeout_transform(self, user_state: UserState, now_seconds: int) -> (list[str], bool, bool):
+        """超时转移。
+
+        :param user_state: 用户状态。
+        :param now_seconds: 用户未执行操作的秒数。
+        :return: 输出的字符串列表、是否需要结束会话、是否转移到新的状态。
+        """
         response: list[str] = []
         with user_state.lock:
             last_seconds = user_state.last_time
             user_state.last_time = now_seconds
         old_state = user_state.state
         for timeout_sec in self.timeout[user_state.state].keys():
-            if last_seconds < timeout_sec <= now_seconds:
+            if last_seconds < timeout_sec <= now_seconds:  # 检查字典的键是否在时间间隔内
                 for action in self.timeout[user_state.state][timeout_sec]:
                     action.exec(user_state, response, "")
-                if user_state.state != -1 and old_state != user_state.state:  # 如果旧状态和新状态不同，执行新状态的speak动作
-                    response += self.hello(user_state)
+                if old_state != user_state.state:  # 如果旧状态和新状态不同，执行新状态的speak动作
+                    if user_state.state != -1:
+                        response += self.hello(user_state)
+                    break
         return response, user_state.state == -1, old_state != user_state.state
 
 

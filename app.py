@@ -62,6 +62,8 @@ def send():
         token = request.args["token"]
         user = user_manage.jwt_decode(token)
         response = state_machine.condition_transform(user.state, msg)
+        if user.state.state == -1:
+            user_manage.timeout_handler(user.username)
         return jsonify({"msg": response, "exit": user.state.state == -1}), 200
     except KeyError:
         abort(400)
@@ -94,6 +96,8 @@ def echo():
         token = request.args["token"]
         user = user_manage.jwt_decode(token)
         response, exit_, reset_timer = state_machine.timeout_transform(user.state, seconds)
+        if exit_:
+            user_manage.timeout_handler(user.username)
         return jsonify({"msg": response, "exit": exit_, "reset": reset_timer}), 200
     except (KeyError, ValueError):
         abort(400)
@@ -160,4 +164,4 @@ def register():
 
 
 if __name__ == '__main__':
-    app.run(threading=True)
+    app.run()

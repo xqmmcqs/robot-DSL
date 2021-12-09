@@ -29,7 +29,7 @@ class TestApp(unittest.TestCase):
         self.assertIn("token", json_data)
         token = json_data["token"]
 
-        for i in range(1, 100):
+        for i in range(1, 10):
             response = self.client.get("/send", query_string={"msg": "改名", "token": token})
             self.assertEqual(response.status_code, 200)
             json_data = json.loads(response.data)

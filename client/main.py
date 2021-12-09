@@ -1,3 +1,8 @@
+"""客服系统客户端。
+
+Copyright (c) 2021 Ziheng Mao.
+"""
+
 import sys
 from threading import Timer, Lock
 import json.decoder
@@ -10,6 +15,11 @@ server_address = "http://127.0.0.1:5000"
 
 
 class Message(QObject):
+    """消息类。
+
+    :ivar msg: 消息内容。
+    :ivar author: 消息发送方，0表示客服，1表示用户。
+    """
     def __init__(self, msg: str, author: int, parent=None) -> None:
         super().__init__(parent)
         self._msg = msg
@@ -26,9 +36,18 @@ class Message(QObject):
 
 # noinspection PyUnresolvedReferences
 class ClientModel(QObject):
+    """客户端模型。与QML交互。
+
+    :ivar message_list: 消息列表。
+    :ivar lock: 互斥锁。
+    :ivar token: 令牌。
+    :ivar have_login: 是否已经登录。
+    :ivar timer: 超时计时器，监测用户闲置时间。
+    :ivar time_count: 用户闲置时间计数器。
+    """
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._message_list = [Message('aa', 0), Message('bb', 1)]
+        self._message_list = []
         self._lock = Lock()
 
         self._token: Optional[str] = None
@@ -63,11 +82,11 @@ class ClientModel(QObject):
             if self._token is None:
                 return
 
-        if len(msg.strip()) == 0:
+        if len(msg.strip()) == 0: # 消息为空
             return
         self.append_message(Message(msg, 1))
 
-        with self._lock:
+        with self._lock: # 重设计时器
             self._time_count = 0
         self._timer.cancel()
         self._timer = Timer(5, self.timeout_handler)
