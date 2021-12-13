@@ -10,10 +10,16 @@
 
 ## 用户指南
 
+`config.json`配置文件条目解释：
+
+- `key`: JWT密钥；
+- `db_path`：数据库文件路径，相对于主目录。
+- `source`：脚本文件路径的列表，相对于主目录。
+
 安装依赖：
 
 ```
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
 启动服务端：
