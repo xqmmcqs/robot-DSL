@@ -1,8 +1,3 @@
-"""
-
-Copyright (c) 2021 xqmmcqs.
-"""
-
 from threading import Thread
 import unittest
 import json

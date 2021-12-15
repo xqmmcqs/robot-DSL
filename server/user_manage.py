@@ -30,7 +30,7 @@ class UserManage(object):
     """用户管理类。
 
     :ivar users: 从用户名映射到 :py:class:`server.user_manage.User` 对象的字典。
-    :ivar lock: 互斥访问 `users` 字典的锁。
+    :ivar lock: 互斥访问 ``users`` 字典的锁。
     :ivar key: JWT加密密钥。
     """
 
@@ -51,7 +51,7 @@ class UserManage(object):
         """JWT令牌解码。
 
         :param token: JWT令牌。
-        :return: 如果解码成功，并且用户存在，则返回对应的 `User` 对象。
+        :return: 如果解码成功，并且用户存在，则返回对应的 ``User`` 对象。
         :raises jwt.InvalidTokenError: 当解码失败或者用户名不存在时触发。
         """
         username = jwt.decode(token, self.key, algorithms="HS256").get("username")
@@ -64,7 +64,7 @@ class UserManage(object):
     def connect(self) -> (User, str):
         """处理新客户端连接到服务器的请求。
 
-        :return: `User` 对象和JWT令牌。
+        :return: ``User`` 对象和JWT令牌。
         """
         username = f"Guest_{time.time_ns()}"
         with self.lock:
@@ -75,10 +75,10 @@ class UserManage(object):
     def login(self, user: User, username: str, passwd: str) -> Optional[str]:
         """处理登录请求。
 
-        :param user: 客户端对应的 `User` 对象。
+        :param user: 客户端对应的 ``User`` 对象。
         :param username: 登录的用户名。
         :param passwd: 登录的密码。
-        :return: 如果注册成功，返回新JWT令牌。否则返回None。
+        :return: 如果登录成功，返回新JWT令牌。否则返回None。
         """
         old_username = user.username
         if not self.users[old_username].state.login(username, passwd):  # 登录失败，用户名或密码错误
@@ -94,7 +94,7 @@ class UserManage(object):
     def register(self, user: User, username: str, passwd: str) -> Optional[str]:
         """处理注册请求。
 
-        :param user: 客户端对应的 `User` 对象。
+        :param user: 客户端对应的 ``User`` 对象。
         :param username: 注册的用户名。
         :param passwd: 注册的密码。
         :return: 如果注册成功，返回新JWT令牌。否则返回None。
