@@ -1,12 +1,14 @@
-# 一种领域特定脚本语言的解释器的设计与实现
+# robot-DSL
 
-学号：2019211397
+一个应用于在线机器人的脚本语言及其解释器，配有相应客户端。
 
-姓名：毛子恒
+## 特性
 
-## 文档
-
-推荐内容和doc.pdf相同但是观感更好的[在线文档](https://xqmmcqs.com/DSL/index.html)
+- 基于状态机的应答逻辑。
+- 用户注册/登录，`JWT` 鉴权。
+- 自定义用户变量，持久化访问。
+- 基于 [PyParsing](https://pyparsing-docs.readthedocs.io/en/latest/index.html) 的解释器。
+- PyQt5 & QtQuick 实现的客户端。
 
 ## 用户指南
 
